@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.cache/
+bin/
+# Generados por "npm run build"
+renderer/app.js
+renderer/styles.css
+# Pruebas compiladas
+test/*.cjs
+.DS_Store

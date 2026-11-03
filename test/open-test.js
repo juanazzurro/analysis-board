@@ -1,0 +1,4 @@
+import { familyFromName, familyFromMoves, openingFamilyEs } from "../src/openings.js";
+const names = ["Italian Game: Two Knights Defense", "Kings Pawn Opening Kings Knight Variation", "Queen's Pawn Game: Accelerated London System", "Scandinavian Defense Mieses Kotroc Variation", "Sicilian Defense: Alapin Variation", "Caro-Kann Defense: Advance Variation", "Ruy Lopez: Berlin Defense", "Petrov's Defense", "Englund Gambit", "Queens Gambit Declined", "Bishops Opening", "Philidor Defence", "Van't Kruijs Opening", "Nimzo-Larsen Attack", "Zukertort Opening", "Blah Thing"];
+for (const n of names) console.log(n, "=>", familyFromName(n));
+console.log(familyFromMoves("e4 e5 Nf3 Nc6 Bc4 Bc5".split(" ")), familyFromMoves("d4 d5 Bf4 Nf6".split(" ")), familyFromMoves("e4 e5 Qh5".split(" ")), familyFromMoves(["a3"]), openingFamilyEs("", ["a3", "e5"]));

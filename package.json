@@ -1,0 +1,37 @@
+{
+  "name": "analysis-board",
+  "productName": "Analysis Board",
+  "version": "1.2.0",
+  "description": "Chess analysis and training app for Mac with Stockfish 18: diagnosis of your mistakes, threats, puzzles, endgames and a daily plan. In English and Spanish.",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node build.mjs && electron .",
+    "package:mac": "bash scripts/package-mac.sh"
+  },
+  "keywords": [
+    "ajedrez",
+    "chess",
+    "stockfish",
+    "electron",
+    "lichess",
+    "chess.com",
+    "entrenamiento"
+  ],
+  "author": "juanazzurro",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/juanazzurro/analysis-board",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juanazzurro/analysis-board.git"
+  },
+  "dependencies": {
+    "chess.js": "^1.4.0",
+    "chessground": "^9.2.1",
+    "fzstd": "^0.1.1"
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "esbuild": "^0.28.2"
+  }
+}
