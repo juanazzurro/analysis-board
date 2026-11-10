@@ -5,17 +5,20 @@ import { MOTIFS } from "../motifs.js";
 import { PHASE_LABEL, moveLabel } from "../chess-util.js";
 import { $, esc, fmtDate } from "../ui.js";
 import { tr, EN, fmt1 } from "../i18n.js";
+import { periodReport, rangeStart } from "../report.js";
 
 let hooks = {};
+let range = null; // "week" | "month" | "all"
 export function initDiagnosis(h) {
   hooks = h;
   const root = $("dgBody");
   root.addEventListener("click", (e) => {
     const t = e.target.closest("[data-act]"); if (!t) return;
     const a = t.dataset.act;
+    if (a === "range") { range = t.dataset.range; render(); return; }
     if (a === "analyse") analyseMissing();
     else if (a === "train") train(t.dataset.motif);
-    else if (a === "open") hooks.openGame(t.dataset.id, +t.dataset.ply);
+    else if (a === "open") hooks.openGame(t.dataset.id, t.dataset.ply === "" ? undefined : +t.dataset.ply);
     else if (a === "goto") hooks.goView(t.dataset.view);
   });
   on("analysed", () => { if (!$("view-diagnosis").hidden) render(); });
@@ -52,15 +55,38 @@ function renderQueue() {
   el.innerHTML = `<div class="progress"><div class="progress-track"><div class="progress-bar" style="width:${p}%"></div></div><span class="progress-txt">${tr(`Analizando: quedan ${q} ${q === 1 ? "partida" : "partidas"}`, `Analyzing: ${q} ${q === 1 ? "game" : "games"} left`)}</span></div>`;
 }
 
+const RANGE_LABEL = { week: tr("Últimos 7 días", "Last 7 days"), month: tr("Últimos 30 días", "Last 30 days"), all: tr("Todo", "All time") };
+function rangeSeg() {
+  return `<div class="seg" role="tablist" aria-label="${tr("Período", "Period")}">${["week", "month", "all"].map((r) => `<button class="seg-btn${range === r ? " on" : ""}" type="button" data-act="range" data-range="${r}">${RANGE_LABEL[r]}</button>`).join("")}</div>`;
+}
+/** Informe del período: qué pasó en la semana o el mes y cómo se compara con el período anterior. */
+function periodHtml() {
+  const rep = periodReport(range); if (!rep) return "";
+  const mark = { up: "▲", down: "▼", flat: "•" };
+  const title = range === "week" ? tr("Tu semana", "Your week") : tr("Tu mes", "Your month");
+  let h = `<section class="dg-sec"><div class="card period-card"><div class="card-head"><h3>${title}</h3><span class="muted small">${range === "week" ? tr("comparada con los 7 días anteriores", "compared with the previous 7 days") : tr("comparado con los 30 días anteriores", "compared with the previous 30 days")}</span></div>`;
+  h += `<ul class="rp-ctx">${rep.lines.map((l) => `<li class="${l.tone}"><i>${mark[l.tone]}</i><span>${esc(l.text)}</span></li>`).join("")}</ul>`;
+  if (rep.best || rep.worst) {
+    const g = (x, label) => (x ? `<button class="chip" type="button" data-act="open" data-id="${esc(x.id)}" data-ply="">${label}: <span class="nofig">${esc(x.label)}</span> (${Math.round(x.acc)}%)</button>` : "");
+    h += `<div class="period-games">${g(rep.best, tr("Tu mejor partida", "Your best game"))}${rep.worst && rep.worst.id !== (rep.best && rep.best.id) ? g(rep.worst, tr("La más floja", "The weakest")) : ""}</div>`;
+  }
+  if (rep.focus) {
+    const info = MOTIFS[rep.focus];
+    h += `<div class="td-note"><span><b>${tr("Para trabajar ahora:", "To work on now:")}</b> ${esc(info.tip)}</span><button class="btn small primary" type="button" data-act="train" data-motif="${rep.focus}">${trainLabel(info.train)}</button></div>`;
+  }
+  return h + `</div></section>`;
+}
+
 function render() {
-  const ins = computeInsights();
   const root = $("dgBody");
+  if (!range) { const m = computeInsights(rangeStart("month")); range = m.games.length >= 5 ? "month" : "all"; }
+  const ins = computeInsights(rangeStart(range));
   if (!ins.own) {
     root.innerHTML = `<div class="card empty-big"><h2>${tr("Todavía no hay partidas tuyas", "No games of yours yet")}</h2><p>${tr("Cargá tu usuario de Lichess o Chess.com y traé tus partidas. El diagnóstico se arma solo con lo que el motor encuentra en ellas.", "Enter your Lichess or Chess.com username and import your games. The diagnosis builds itself from what the engine finds in them.")}</p><div class="btn-row"><button class="btn primary" type="button" data-act="goto" data-view="library">${tr("Ir a Partidas", "Go to Games")}</button></div></div>`;
     return;
   }
   const n = ins.games.length, few = n && n < 8;
-  let h = `<div class="dg-head"><p class="sub">${tr(
+  let h = `<div class="dg-head">${rangeSeg()}<p class="sub">${range !== "all" && !ins.all.length ? "" : tr(
     `Basado en <b>${n}</b> ${n === 1 ? "partida analizada" : "partidas analizadas"} y <b>${ins.totalErrors}</b> errores importantes.${few ? " Con tan pocas partidas es orientativo: a partir de 10 se vuelve confiable." : ""}`,
     `Based on <b>${n}</b> analyzed ${n === 1 ? "game" : "games"} and <b>${ins.totalErrors}</b> significant mistakes.${few ? " With so few games it's only a rough guide: from 10 on it becomes reliable." : ""}`)}</p>`;
   if (ins.pendingAnalysis) {
@@ -68,6 +94,8 @@ function render() {
     h += `<div class="dg-pending"><span>${tr(`Te ${p === 1 ? "falta 1 partida" : `faltan ${p} partidas`} por analizar. Cuantas más, más preciso el diagnóstico.`, `${p} ${p === 1 ? "game" : "games"} still to analyze. The more games, the more accurate the diagnosis.`)}</span><button class="btn small primary" type="button" data-act="analyse">${tr("Analizar ahora", "Analyze now")} (${minutesFor(p)})</button></div>`;
   }
   h += `<div id="dgQueue"></div></div>`;
+  if (range !== "all") h += periodHtml();
+  if (range !== "all" && !ins.all.length) { root.innerHTML = h; renderQueue(); return; }
 
   if (!n) { root.innerHTML = h + `<div class="card empty-big"><h2>${tr("Falta analizar tus partidas", "Your games still need analyzing")}</h2><p>${tr("Apenas termine el análisis vas a ver acá tus puntos débiles. Mientras tanto, esto sale solo de tus resultados:", "As soon as the analysis finishes you'll see your weak spots here. Meanwhile, this comes from your results alone:")}</p></div>` + speedsHtml(ins) + openingsHtml(ins); renderQueue(); return; }
 
@@ -108,7 +136,7 @@ function render() {
   h += `</div></section>`;
 
   // 3. Progreso
-  h += `<section class="dg-sec"><h2 class="sec-title">${tr("Cómo venís", "How you're doing")}</h2>${weeklyHtml(ins.weekly)}<div class="dg-two">
+  h += `<section class="dg-sec"><h2 class="sec-title">${tr("Cómo venís", "How you're doing")}</h2>${range === "all" ? weeklyHtml(ins.weekly) : ""}<div class="dg-two">
     <div class="card"><h3>${tr("Precisión por partida", "Accuracy per game")}</h3>${accChart(ins.trend)}</div>
     <div class="card"><h3>${tr("Blunders por partida", "Blunders per game")} <small class="muted">${tr("últimas 30", "last 30")}</small></h3>${blunderChart(ins.trend)}</div></div></section>`;
 

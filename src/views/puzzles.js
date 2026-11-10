@@ -3,7 +3,7 @@ import { tr, EN, fmtInt } from "../i18n.js";
 import { store, emit, saveProgress, logActivity } from "../state.js";
 import { Chess, tryMove, uciOf, pvToSan } from "../chess-util.js";
 import { recommendedThemes } from "../insights.js";
-import { makeBoard, syncBoard, arrow } from "../board.js";
+import { makeBoard, syncBoard, arrow, pickPromotion } from "../board.js";
 import { $, esc, toast } from "../ui.js";
 
 export const THEME_LABEL = EN ? {
@@ -117,13 +117,13 @@ function opponentMove() {
   syncBoard(P.cg, P.chess, { orientation: P.user === "w" ? "white" : "black", lastMove: [m.from, m.to], movable: P.user, shapes: [], sound: { captured: !!m.captured, check: m.san.includes("+") } });
   renderCard();
 }
-function onMove(orig, dest) {
+async function onMove(orig, dest, promo) {
   if (P.state !== "solving") { renderBoardFresh(); return; }
+  const cur = P.cur, at = P.idx;
   const exp = P.cur.moves[P.idx];
   const c = new Chess(P.chess.fen());
-  const piece = c.get(orig);
-  let promo;
-  if (piece && piece.type === "p" && (dest[1] === "8" || dest[1] === "1")) promo = exp && exp.slice(0, 4) === orig + dest && exp[4] ? exp[4] : "q";
+  if (promo === undefined) promo = await pickPromotion(P.cg, c, orig, dest);
+  if (promo === null || P.cur !== cur || P.idx !== at || P.state !== "solving") { renderBoardFresh(); return; }
   const m = tryMove(c, { from: orig, to: dest, promotion: promo });
   if (!m) { renderBoardFresh(); return; }
   const ok = uciOf(m) === exp || c.isCheckmate();

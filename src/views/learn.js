@@ -4,7 +4,7 @@ import { diagnoseEntry, MOTIFS } from "../motifs.js";
 import { Chess, tryMove, uciOf, pvToSan, numberedLine, moveLabel, wp, toCp, scoreFromInfo, evalText } from "../chess-util.js";
 import { CLS } from "../analysis.js";
 import { explainMove } from "../explain.js";
-import { makeBoard, syncBoard, arrow } from "../board.js";
+import { makeBoard, syncBoard, arrow, pickPromotion } from "../board.js";
 import { $, esc, segBind, segSet, playerStrip, fmtDate } from "../ui.js";
 import { tr } from "../i18n.js";
 
@@ -133,12 +133,12 @@ function record(result) {
 
 /* ---------- interacción ---------- */
 function stopCheck() { if (L.checking) { L.checking.cancel(); L.checking = null; } }
-async function onMove(orig, dest) {
+async function onMove(orig, dest, promo) {
   if (!L.ex || L.state !== "solving") { render(); return; }
   engines.live.stopAll();
   const c = new Chess(L.ex.fen);
-  const piece = c.get(orig);
-  const promo = piece && piece.type === "p" && (dest[1] === "8" || dest[1] === "1") ? "q" : undefined;
+  if (promo === undefined) promo = await pickPromotion(L.cg, c, orig, dest);
+  if (promo === null || !L.ex || L.state !== "solving") { render(); return; }
   const m = tryMove(c, { from: orig, to: dest, promotion: promo });
   if (!m) { render(); return; }
   const uci = uciOf(m);

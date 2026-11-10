@@ -2,7 +2,7 @@
 import { store, engines, ensureEngines, saveProgress, logActivity, emit } from "../state.js";
 import { Chess, tryMove, uciOf } from "../chess-util.js";
 import { LESSONS } from "../endgames-data.js";
-import { makeBoard, syncBoard } from "../board.js";
+import { makeBoard, syncBoard, pickPromotion } from "../board.js";
 import { $, esc } from "../ui.js";
 import { tr } from "../i18n.js";
 
@@ -68,10 +68,11 @@ async function startPosition(i) {
 }
 function sideName(c) { return c === "w" ? tr("Blancas", "White") : tr("Negras", "Black"); }
 
-function onMove(orig, dest) {
+async function onMove(orig, dest, promo) {
   if (E.state !== "playing" || E.chess.turn() !== E.lesson.side) { renderBoard(); return; }
-  const piece = E.chess.get(orig);
-  const promo = piece && piece.type === "p" && (dest[1] === "8" || dest[1] === "1") ? "q" : undefined;
+  const fen0 = E.chess.fen();
+  if (promo === undefined) promo = await pickPromotion(E.cg, E.chess, orig, dest);
+  if (promo === null || E.state !== "playing" || E.chess.fen() !== fen0) { renderBoard(); return; }
   const m = tryMove(E.chess, { from: orig, to: dest, promotion: promo });
   if (!m) { renderBoard(); return; }
   E.userMoves++;

@@ -24,16 +24,19 @@ export function scoreFor(e, uc) {
   return null;
 }
 
-let cache = null, cacheKey = "";
+const caches = new Map();
 const libKey = libSignature;
 
-export function computeInsights() {
-  const key = libKey();
-  if (cache && cacheKey === key) return cache;
+/** `from`: solo partidas desde esa fecha (0 = todas). Así el Diagnóstico puede mirar la última semana o el último mes. */
+export function computeInsights(from = 0) {
+  const key = libKey() + ":" + from;
+  let cache = caches.get(from);
+  if (cache && cache.key === key) return cache;
   const games = [], all = []; let pendingAnalysis = 0, own = 0, changed = false;
   for (const e of store.library) {
     const uc = detectUserColor(e); if (!uc) continue;
     own++;
+    if (from && (e.date || 0) < from) continue;
     let g; try { g = gameOf(e); } catch (err) { continue; }
     const opening = openingName(e, g.headers);
     // Para aperturas y ritmos alcanza con el resultado: entran todas tus partidas, analizadas o no.
@@ -102,12 +105,12 @@ export function computeInsights() {
     return { now: sumWeek(startOfDay(weekStart), now + 1), prev: sumWeek(startOfDay(prevStart), startOfDay(weekStart)) };
   };
 
-  cache = { own, pendingAnalysis, games, all, items, ranked, top, phases, pressure, speeds, trend, openings, totalErrors: items.length };
+  cache = { key, from, own, pendingAnalysis, games, all, items, ranked, top, phases, pressure, speeds, trend, openings, totalErrors: items.length };
   Object.defineProperty(cache, "weekly", { get: weeklyOf, enumerable: true });
-  cacheKey = key;
+  caches.set(from, cache);
   return cache;
 }
-export function invalidateInsights() { cache = null; }
+export function invalidateInsights() { caches.clear(); }
 
 /** Temas de problemas recomendados según tus debilidades. */
 export function recommendedThemes() {

@@ -1,5 +1,5 @@
 // Analysis Board (antes "Mesa de Análisis") — proceso principal (Electron)
-const { app, BrowserWindow, ipcMain, shell, nativeTheme, Menu, dialog, screen } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, nativeTheme, Menu, dialog, screen, clipboard } = require("electron");
 const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -109,7 +109,7 @@ ipcMain.on("engine:send", (_e, id, cmd) => {
   if (rec) { try { rec.proc.stdin.write(cmd + "\n"); } catch (e) {} }
 });
 ipcMain.handle("engine:stop", (_e, id) => stopEngine(id));
-ipcMain.handle("sys:info", () => ({ cores: os.cpus().length, mem: Math.round(os.totalmem() / 1048576), platform: process.platform, version: app.getVersion() }));
+ipcMain.handle("sys:info", () => ({ cores: os.cpus().length, mem: Math.round(os.totalmem() / 1048576), platform: process.platform, version: app.getVersion(), test: !!process.env.MESA_SHOTS && !process.env.MESA_NEWS }));
 
 /* ---------- Actualizar desde un .zip (sin pasar por la Terminal) ---------- */
 const OUR_ID = /^ar\.juanazzurro\.mesa/;
@@ -120,20 +120,20 @@ function appBundlePath() {
 function run(cmd, args) {
   return new Promise((res, rej) => execFile(cmd, args, { maxBuffer: 1 << 24 }, (err, so, se) => (err ? rej(new Error(String(se || err.message).trim())) : res(String(so).trim()))));
 }
-async function installUpdate() {
+function checkInstallable() {
   if (process.platform !== "darwin") throw new Error(L("Esto solo funciona en la Mac.", "This only works on a Mac."));
   const target = appBundlePath();
   if (!target) throw new Error(L("No encontré dónde está instalada la app.", "I couldn't find where the app is installed."));
   if (target.includes("/AppTranslocation/")) throw new Error(L("Mové la app a la carpeta Aplicaciones, abrila desde ahí y probá de nuevo.", "Move the app to the Applications folder, open it from there and try again."));
   try { fs.accessSync(path.dirname(target), fs.constants.W_OK); } catch (e) { throw new Error(L("No tengo permiso para escribir en ", "I don't have permission to write to ") + path.dirname(target) + "."); }
-  const pick = await dialog.showOpenDialog(win, {
-    title: L("Elegí el .zip de la versión nueva", "Choose the .zip of the new version"), buttonLabel: L("Instalar", "Install"),
-    defaultPath: app.getPath("downloads"), properties: ["openFile"], filters: [{ name: APP_NAME, extensions: ["zip"] }]
-  });
-  if (pick.canceled || !pick.filePaths[0]) return { canceled: true };
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mesa-actualizacion-"));
-  log("actualizando desde", pick.filePaths[0]);
-  await run("/usr/bin/ditto", ["-x", "-k", pick.filePaths[0], tmp]).catch(() => { throw new Error(L("No pude abrir ese .zip. Descargalo de nuevo.", "I couldn't open that .zip. Download it again.")); });
+  return target;
+}
+/** Reemplaza la app instalada por la que viene en `zip` y la vuelve a abrir. */
+async function installFromZip(zip) {
+  const target = checkInstallable();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "analysis-board-update-"));
+  log("actualizando desde", zip);
+  await run("/usr/bin/ditto", ["-x", "-k", zip, tmp]).catch(() => { throw new Error(L("No pude abrir ese .zip. Descargalo de nuevo.", "I couldn't open that .zip. Download it again.")); });
   const name = fs.readdirSync(tmp).find((n) => n.endsWith(".app"));
   if (!name) throw new Error(L("Ese .zip no tiene la app adentro.", "That .zip doesn't contain the app."));
   const fresh = path.join(tmp, name);
@@ -163,6 +163,80 @@ async function installUpdate() {
   setTimeout(() => app.quit(), 1200);
   return { version };
 }
+async function installUpdate() {
+  checkInstallable();
+  const pick = await dialog.showOpenDialog(win, {
+    title: L("Elegí el .zip de la versión nueva", "Choose the .zip of the new version"), buttonLabel: L("Instalar", "Install"),
+    defaultPath: app.getPath("downloads"), properties: ["openFile"], filters: [{ name: APP_NAME, extensions: ["zip"] }]
+  });
+  if (pick.canceled || !pick.filePaths[0]) return { canceled: true };
+  return installFromZip(pick.filePaths[0]);
+}
+
+/* ---------- Buscar y bajar actualizaciones desde GitHub ---------- */
+const REPO = "juanazzurro/analysis-board";
+const UPDATE_API = process.env.MESA_UPDATE_API || `https://api.github.com/repos/${REPO}/releases/latest`;
+function cmpVersion(a, b) {
+  const pa = String(a).split(/[.-]/).map((x) => parseInt(x, 10) || 0), pb = String(b).split(/[.-]/).map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d > 0 ? 1 : -1; }
+  return 0;
+}
+let latestRelease = null;
+async function checkUpdate() {
+  const current = app.getVersion();
+  let r;
+  try { r = await fetch(UPDATE_API, { headers: { "User-Agent": UA, Accept: "application/vnd.github+json" } }); }
+  catch (e) { throw new Error(L("No pude conectarme para buscar actualizaciones. Revisá tu conexión a internet.", "I couldn't connect to check for updates. Check your internet connection.")); }
+  if (r.status === 404) return { current, latest: null, newer: false };
+  if (!r.ok) throw new Error(L(`GitHub respondió con un error (${r.status}). Probá más tarde.`, `GitHub returned an error (${r.status}). Try again later.`));
+  const j = await r.json();
+  const latest = String(j.tag_name || "").replace(/^v/i, "");
+  const asset = (j.assets || []).find((x) => /mac.*\.zip$/i.test(x.name)) || (j.assets || []).find((x) => /\.zip$/i.test(x.name));
+  latestRelease = { latest, asset: asset ? { url: asset.browser_download_url, size: asset.size, name: asset.name } : null };
+  return { current, latest, newer: !!latest && cmpVersion(latest, current) > 0, url: j.html_url || `https://github.com/${REPO}/releases`, notes: String(j.body || "").slice(0, 1500), hasAsset: !!asset, size: asset ? asset.size : 0, canInstall: process.platform === "darwin" };
+}
+ipcMain.handle("update:check", () => checkUpdate());
+let updateDownload = null;
+ipcMain.handle("update:download", async () => {
+  if (updateDownload) return updateDownload;
+  updateDownload = (async () => {
+    if (!latestRelease) await checkUpdate();
+    const a = latestRelease && latestRelease.asset;
+    if (!a) throw new Error(L("Esa versión no tiene un archivo para descargar. Bajala desde GitHub.", "That version has no file to download. Get it from GitHub."));
+    if (!/^https:\/\//.test(a.url) && !process.env.MESA_UPDATE_API) throw new Error("URL inválida");
+    if (process.platform === "darwin") checkInstallable();
+    const send = (p) => { if (win && !win.isDestroyed()) win.webContents.send("update:progress", p); };
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "analysis-board-download-"));
+    const file = path.join(dir, "Analysis-Board-mac.zip");
+    log("descargando actualización", latestRelease.latest, a.url);
+    let res;
+    try { res = await fetch(a.url, { headers: { "User-Agent": UA, Accept: "application/octet-stream" } }); }
+    catch (e) { throw new Error(L("No pude descargar la actualización. Revisá tu conexión a internet.", "I couldn't download the update. Check your internet connection.")); }
+    if (!res.ok || !res.body) throw new Error(L(`No se pudo descargar la actualización (${res.status}).`, `The update couldn't be downloaded (${res.status}).`));
+    const total = +res.headers.get("content-length") || a.size || 0;
+    const out = fs.createWriteStream(file);
+    let received = 0, last = 0;
+    try {
+      const reader = res.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.length;
+        if (!out.write(Buffer.from(value))) await new Promise((r) => out.once("drain", r));
+        const now = Date.now(); if (now - last > 200) { last = now; send({ received, total }); }
+      }
+      await new Promise((r, j) => { out.on("error", j); out.end(r); });
+    } catch (e) {
+      log("descarga de actualización cortada", e.message);
+      throw new Error(L("Se cortó la descarga de la actualización. Probá de nuevo.", "The update download was interrupted. Try again."));
+    }
+    if (a.size && received !== a.size) throw new Error(L("La descarga llegó incompleta. Probá de nuevo.", "The download arrived incomplete. Try again."));
+    send({ received, total, done: true });
+    if (process.platform !== "darwin") return { downloaded: file, version: latestRelease.latest };
+    return installFromZip(file);
+  })();
+  try { return await updateDownload; } finally { updateDownload = null; }
+});
 ipcMain.handle("update:install", () => installUpdate());
 async function installUpdateFromMenu() {
   try { await installUpdate(); }
@@ -201,8 +275,35 @@ function storeFile(key) {
   if (!/^[a-z0-9_-]+$/i.test(key)) throw new Error("invalid key");
   return path.join(app.getPath("userData"), key + ".json");
 }
+const BACKED_UP = ["library", "training", "progress", "settings"];
+const backupDir = () => path.join(app.getPath("userData"), "backups");
+/** Una copia por día de los datos del usuario (se conservan las de los últimos 3 días con cambios). */
+function dailyBackup() {
+  try {
+    const dir = backupDir(); fs.mkdirSync(dir, { recursive: true });
+    const d = new Date(); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    for (const key of BACKED_UP) {
+      const f = storeFile(key); if (!fs.existsSync(f)) continue;
+      try { JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) { continue; } // nunca se respalda un archivo roto
+      const mine = fs.readdirSync(dir).filter((n) => n.startsWith(key + "-") && n.endsWith(".json")).sort();
+      if (!mine.includes(`${key}-${day}.json`)) { fs.copyFileSync(f, path.join(dir, `${key}-${day}.json`)); mine.push(`${key}-${day}.json`); }
+      for (const old of mine.slice(0, Math.max(0, mine.length - 3))) fs.rmSync(path.join(dir, old), { force: true });
+    }
+  } catch (e) { log("respaldo diario", e.message); }
+}
 ipcMain.handle("store:get", (_e, key) => {
-  try { return JSON.parse(fs.readFileSync(storeFile(key), "utf8")); } catch (e) { return null; }
+  const f = storeFile(key);
+  if (!fs.existsSync(f)) return null;
+  try { return JSON.parse(fs.readFileSync(f, "utf8")); }
+  catch (e) {
+    // El archivo está dañado: se recupera la copia más reciente en vez de arrancar de cero.
+    log("archivo de datos dañado", key, e.message);
+    try {
+      const mine = fs.readdirSync(backupDir()).filter((n) => n.startsWith(key + "-") && n.endsWith(".json")).sort().reverse();
+      for (const n of mine) { try { const v = JSON.parse(fs.readFileSync(path.join(backupDir(), n), "utf8")); fs.copyFileSync(f, f + ".roto"); log("recuperado desde", n); return v; } catch (x) {} }
+    } catch (x) {}
+    return null;
+  }
 });
 ipcMain.handle("store:set", (_e, key, value) => {
   const f = storeFile(key);
@@ -214,6 +315,44 @@ ipcMain.handle("store:set", (_e, key, value) => {
 });
 ipcMain.handle("store:path", () => app.getPath("userData"));
 ipcMain.on("log", (_e, ...a) => log("[ui]", ...a));
+
+/* ---------- Portapapeles y archivos ---------- */
+ipcMain.handle("clip:write", (_e, text) => { clipboard.writeText(String(text || "")); return true; });
+const FILTERS = { pgn: () => [{ name: "PGN", extensions: ["pgn", "txt"] }], json: () => [{ name: L("Copia de seguridad", "Backup"), extensions: ["json"] }] };
+ipcMain.handle("file:save", async (_e, { name, text, kind }) => {
+  let file = process.env.MESA_DIALOG_SAVE || null;
+  if (!file) {
+    const r = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath("documents"), String(name || "archivo").replace(/[\\/:]/g, "_")), filters: (FILTERS[kind] || FILTERS.pgn)() });
+    if (r.canceled || !r.filePath) return { saved: false };
+    file = r.filePath;
+  }
+  fs.writeFileSync(file, String(text), "utf8");
+  return { saved: true, path: file };
+});
+function readTextFile(p) {
+  const st = fs.statSync(p);
+  if (st.size > 200 * 1048576) throw new Error(L("Ese archivo es demasiado grande (más de 200 MB).", "That file is too big (over 200 MB)."));
+  return { name: path.basename(p), text: fs.readFileSync(p, "utf8") };
+}
+ipcMain.handle("file:open", async (_e, kind) => {
+  let paths = process.env.MESA_DIALOG_OPEN ? [process.env.MESA_DIALOG_OPEN] : null;
+  if (!paths) {
+    const r = await dialog.showOpenDialog(win, { properties: kind === "pgn" ? ["openFile", "multiSelections"] : ["openFile"], filters: (FILTERS[kind] || FILTERS.pgn)() });
+    if (r.canceled || !r.filePaths.length) return null;
+    paths = r.filePaths;
+  }
+  return paths.map(readTextFile);
+});
+// Archivos .pgn abiertos desde el Finder (doble clic o "Abrir con").
+const pendingFiles = [];
+function deliverFile(p) {
+  let f; try { f = readTextFile(p); } catch (e) { log("no pude abrir", p, e.message); return; }
+  if (win && !win.isDestroyed() && rendererReady) win.webContents.send("file:opened", f); else pendingFiles.push(f);
+}
+let rendererReady = false;
+app.on("open-file", (e, p) => { e.preventDefault(); deliverFile(p); });
+ipcMain.handle("file:pending", () => { rendererReady = true; return pendingFiles.splice(0); });
+ipcMain.handle("theme:set", (_e, t) => { nativeTheme.themeSource = ["light", "dark"].includes(t) ? t : "system"; return nativeTheme.shouldUseDarkColors; });
 
 /* ---------- Problemas tácticos ---------- */
 const PUZZLE_URL = process.env.MESA_PUZZLE_URL || "https://database.lichess.org/lichess_db_puzzle.csv.zst";
@@ -294,7 +433,7 @@ ipcMain.handle("puzzles:download", async () => {
 });
 
 /* ---------- Importar partidas ---------- */
-const UA = "AnalysisBoard/1.2 (personal chess analysis app; github.com/juanazzurro/analysis-board)";
+const UA = "AnalysisBoard/2.0 (chess analysis app; github.com/juanazzurro/analysis-board)";
 
 async function importLichess(user, max) {
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(user)}?max=${max}&pgnInJson=true&clocks=true&evals=false&opening=true&moves=true`;
@@ -381,12 +520,12 @@ function createWindow() {
   const dark = nativeTheme.shouldUseDarkColors;
   const b = loadBounds();
   win = new BrowserWindow({
-    width: b ? b.width : 1360, height: b ? b.height : 880, minWidth: 1020, minHeight: 680,
+    width: b ? b.width : 1400, height: b ? b.height : 900, minWidth: 1080, minHeight: 700,
     ...(b ? { x: b.x, y: b.y } : {}),
     title: APP_NAME,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: { x: 16, y: 18 },
-    backgroundColor: dark ? "#1b1916" : "#f3efe8",
+    backgroundColor: dark ? "#0f1216" : "#f3f4f7",
     show: false,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
@@ -396,6 +535,7 @@ function createWindow() {
   win.loadFile(path.join(__dirname, "renderer", "index.html"), { query: { lang } });
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: "deny" }; });
   win.webContents.on("will-navigate", (e) => e.preventDefault());
+  win.webContents.on("did-start-loading", () => { rendererReady = false; });
   win.on("close", saveBounds);
   win.on("closed", () => { win = null; });
 }
@@ -415,17 +555,43 @@ async function runShots() {
   app.quit();
 }
 
+const cmd = (c) => () => { if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.webContents.send("menu", c); } };
 function buildMenu() {
-  if (process.platform !== "darwin") return;
+  if (process.platform !== "darwin" && !process.env.MESA_MENU) return;
+  const views = [["today", L("Hoy", "Today")], ["library", L("Partidas", "Games")], ["analysis", L("Análisis", "Analysis")], ["diagnosis", L("Diagnóstico", "Diagnosis")], ["learn", L("Mis errores", "My mistakes")],
+    ["threats", L("Amenazas", "Threats")], ["puzzles", L("Problemas", "Puzzles")], ["endgames", L("Finales", "Endgames")], ["play", L("Contra Stockfish", "Play Stockfish")]];
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: APP_NAME, submenu: [{ role: "about", label: L("Acerca de Analysis Board", "About Analysis Board") }, { label: L("Instalar actualización…", "Install update…"), click: installUpdateFromMenu }, { label: L("Ver versiones en GitHub", "See versions on GitHub"), click: () => shell.openExternal("https://github.com/juanazzurro/analysis-board/releases") }, { type: "separator" }, { role: "hide", label: L("Ocultar", "Hide") }, { role: "hideOthers", label: L("Ocultar otras", "Hide Others") }, { type: "separator" }, { role: "quit", label: L("Salir", "Quit") }] },
-    { label: L("Edición", "Edit"), submenu: [{ role: "undo", label: L("Deshacer", "Undo") }, { role: "redo", label: L("Rehacer", "Redo") }, { type: "separator" }, { role: "cut", label: L("Cortar", "Cut") }, { role: "copy", label: L("Copiar", "Copy") }, { role: "paste", label: L("Pegar", "Paste") }, { role: "selectAll", label: L("Seleccionar todo", "Select All") }] },
-    { label: L("Ver", "View"), submenu: [{ role: "reload", label: L("Recargar", "Reload") }, { role: "togglefullscreen", label: L("Pantalla completa", "Full Screen") }, { role: "resetZoom", label: L("Tamaño real", "Actual Size") }, { role: "zoomIn", label: L("Acercar", "Zoom In") }, { role: "zoomOut", label: L("Alejar", "Zoom Out") }, { type: "separator" }, { role: "toggleDevTools", label: L("Herramientas de desarrollo", "Developer Tools") }] },
-    { label: L("Ventana", "Window"), submenu: [{ role: "minimize", label: L("Minimizar", "Minimize") }, { role: "zoom", label: "Zoom" }, { role: "close", label: L("Cerrar", "Close") }] }
+    { label: APP_NAME, submenu: [
+      { role: "about", label: L("Acerca de Analysis Board", "About Analysis Board") },
+      { label: L("Buscar actualizaciones…", "Check for Updates…"), click: cmd("check-updates") },
+      { label: L("Instalar desde un .zip…", "Install from a .zip…"), click: installUpdateFromMenu },
+      { type: "separator" },
+      { label: L("Ajustes…", "Settings…"), accelerator: "Cmd+,", click: cmd("view:settings") },
+      { type: "separator" }, { role: "hide", label: L("Ocultar Analysis Board", "Hide Analysis Board") }, { role: "hideOthers", label: L("Ocultar otras", "Hide Others") }, { type: "separator" }, { role: "quit", label: L("Salir de Analysis Board", "Quit Analysis Board") }] },
+    { label: L("Archivo", "File"), submenu: [
+      { label: L("Tablero libre", "Free Board"), accelerator: "CmdOrCtrl+N", click: cmd("new-board") },
+      { label: L("Abrir archivo PGN…", "Open PGN File…"), accelerator: "CmdOrCtrl+O", click: cmd("open-pgn") },
+      { label: L("Pegar PGN…", "Paste PGN…"), accelerator: "CmdOrCtrl+Shift+V", click: cmd("paste-pgn") },
+      { type: "separator" },
+      { label: L("Exportar esta partida…", "Export This Game…"), accelerator: "CmdOrCtrl+S", click: cmd("export-pgn") },
+      { label: L("Exportar todas las partidas…", "Export All Games…"), click: cmd("export-all") },
+      { type: "separator" },
+      { label: L("Guardar copia de seguridad…", "Save a Backup…"), click: cmd("backup") },
+      { label: L("Restaurar una copia…", "Restore a Backup…"), click: cmd("restore") }] },
+    { label: L("Edición", "Edit"), submenu: [{ role: "undo", label: L("Deshacer", "Undo") }, { role: "redo", label: L("Rehacer", "Redo") }, { type: "separator" }, { role: "cut", label: L("Cortar", "Cut") }, { role: "copy", label: L("Copiar", "Copy") }, { role: "paste", label: L("Pegar", "Paste") }, { role: "selectAll", label: L("Seleccionar todo", "Select All") },
+      { type: "separator" }, { label: L("Copiar la posición (FEN)", "Copy Position (FEN)"), accelerator: "CmdOrCtrl+Shift+C", click: cmd("copy-fen") }, { label: L("Copiar la partida (PGN)", "Copy Game (PGN)"), click: cmd("copy-pgn") }] },
+    { label: L("Ir", "Go"), submenu: views.map(([v, label], i) => ({ label, accelerator: `CmdOrCtrl+${i + 1}`, click: cmd("view:" + v) })) },
+    { label: L("Ver", "View"), submenu: [{ role: "togglefullscreen", label: L("Pantalla completa", "Full Screen") }, { type: "separator" }, { role: "resetZoom", label: L("Tamaño real", "Actual Size") }, { role: "zoomIn", label: L("Acercar", "Zoom In") }, { role: "zoomOut", label: L("Alejar", "Zoom Out") }, { type: "separator" }, { role: "reload", label: L("Recargar", "Reload") }, { role: "toggleDevTools", label: L("Herramientas de desarrollo", "Developer Tools") }] },
+    { label: L("Ventana", "Window"), submenu: [{ role: "minimize", label: L("Minimizar", "Minimize") }, { role: "zoom", label: "Zoom" }, { role: "close", label: L("Cerrar", "Close") }] },
+    { role: "help", label: L("Ayuda", "Help"), submenu: [
+      { label: L("Atajos de teclado", "Keyboard Shortcuts"), click: cmd("shortcuts") },
+      { label: L("Novedades de cada versión", "What's New in Each Version"), click: () => shell.openExternal(`https://github.com/${REPO}/releases`) },
+      { label: L("Analysis Board en GitHub", "Analysis Board on GitHub"), click: () => shell.openExternal(`https://github.com/${REPO}`) },
+      { label: L("Informar un problema", "Report a Problem"), click: () => shell.openExternal(`https://github.com/${REPO}/issues/new`) }] }
   ]));
 }
 ipcMain.handle("lang:set", (_e, l) => {
-  lang = l === "en" ? "en" : "es";
+  if (l === "en" || l === "es") lang = l; // sin idioma: solo recarga la interfaz
   buildMenu();
   if (win && !win.isDestroyed()) win.loadFile(path.join(__dirname, "renderer", "index.html"), { query: { lang } });
   return lang;
@@ -433,7 +599,10 @@ ipcMain.handle("lang:set", (_e, l) => {
 
 app.whenReady().then(() => {
   lang = decideLang();
-  app.setAboutPanelOptions({ applicationName: APP_NAME, applicationVersion: app.getVersion(), copyright: "Stockfish 18 (GPL-3.0) · chessground (GPL-3.0) · cburnett (CC BY-SA 3.0)", website: "https://github.com/juanazzurro/analysis-board" });
+  const st0 = readSettings();
+  if (!process.env.MESA_THEME && st0 && ["light", "dark"].includes(st0.theme)) nativeTheme.themeSource = st0.theme;
+  dailyBackup();
+  app.setAboutPanelOptions({ applicationName: APP_NAME, applicationVersion: app.getVersion(), copyright: "GPL-3.0 · Stockfish 18 · chessground", website: "https://github.com/juanazzurro/analysis-board" });
   buildMenu();
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

@@ -1,0 +1,20 @@
+/* Colores del tablero. El tema se elige en Ajustes y se aplica con data-board en <html>. */
+:root, :root[data-board="steel"] { --sq-l: #e4e9f0; --sq-d: #7e93b8; --sq-last: rgba(74, 200, 168, .5); --sq-sel: rgba(35, 70, 210, .42); --sq-dest: rgba(20, 40, 110, .32); }
+:root[data-board="walnut"] { --sq-l: #f0d9b5; --sq-d: #b58863; --sq-last: rgba(155, 199, 0, .41); --sq-sel: rgba(20, 85, 30, .5); --sq-dest: rgba(20, 85, 30, .45); }
+:root[data-board="tournament"] { --sq-l: #f0eed6; --sq-d: #5f8f63; --sq-last: rgba(245, 222, 80, .55); --sq-sel: rgba(250, 240, 120, .65); --sq-dest: rgba(10, 40, 15, .3); }
+:root[data-board="graphite"] { --sq-l: #dcdee2; --sq-d: #8b9099; --sq-last: rgba(120, 170, 255, .45); --sq-sel: rgba(60, 110, 230, .45); --sq-dest: rgba(15, 20, 30, .32); }
+
+cg-board { background-color: var(--sq-l); background-image: conic-gradient(var(--sq-d) 90deg, var(--sq-l) 90deg 180deg, var(--sq-d) 180deg 270deg, var(--sq-l) 270deg); background-size: 25% 25%; }
+cg-board square.move-dest { background: radial-gradient(var(--sq-dest) 21%, rgba(0, 0, 0, 0) 22%); }
+cg-board square.oc.move-dest { background: radial-gradient(transparent 0%, transparent 78%, var(--sq-dest) 79%); }
+cg-board square.move-dest:hover { background: var(--sq-dest); }
+cg-board square.last-move { background-color: var(--sq-last); }
+cg-board square.selected { background-color: var(--sq-sel); }
+cg-board square.check { background: radial-gradient(ellipse at center, rgba(255, 0, 0, 1) 0%, rgba(231, 0, 0, 1) 25%, rgba(169, 0, 0, 0) 89%, rgba(158, 0, 0, 0) 100%); }
+cg-board square.premove-dest { background: radial-gradient(rgba(20, 30, 85, .5) 22%, rgba(0, 0, 0, 0) 0); }
+cg-board square.current-premove { background-color: rgba(20, 30, 85, .5); }
+
+.orientation-white .ranks :nth-child(odd), .orientation-white .files :nth-child(even),
+.orientation-black .ranks :nth-child(even), .orientation-black .files :nth-child(odd) { color: var(--sq-d); }
+.orientation-white .ranks :nth-child(even), .orientation-white .files :nth-child(odd),
+.orientation-black .ranks :nth-child(odd), .orientation-black .files :nth-child(even) { color: var(--sq-l); }

@@ -8,7 +8,8 @@ export const DEFAULT_SETTINGS = {
   lichessUser: "", chesscomUser: "",
   depth: "normal", threads: 0, hash: 256,
   sound: true, aiKey: "", aiModel: "claude-sonnet-5-5",
-  learnInacc: false, importCount: 25, selfReview: true, dailyPuzzles: 10
+  learnInacc: false, importCount: 25, selfReview: true, dailyPuzzles: 10,
+  theme: "system", board: "steel", pieces: "cburnett", notation: "fig", liveEngine: true, liveLines: 3, autoUpdate: true
 };
 export const DEFAULT_PROGRESS = { days: {}, puzzles: { rating: 1000, n: 0, history: [], themes: {}, seen: [] }, endgames: {} };
 

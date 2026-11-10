@@ -1,0 +1,42 @@
+/* Juegos de piezas alternativos (el predeterminado, cburnett, viene con chessground). Generado por tools/pieces-css.py: no editar a mano. */
+:root[data-pieces="merida"] .cg-wrap piece.pawn.white, :root[data-pieces="merida"] piece.pawn.white { background-image: url("./assets/pieces/merida/wP.svg"); }
+:root[data-pieces="merida"] .cg-wrap piece.knight.white, :root[data-pieces="merida"] piece.knight.white { background-image: url("./assets/pieces/merida/wN.svg"); }
+:root[data-pieces="merida"] .cg-wrap piece.bishop.white, :root[data-pieces="merida"] piece.bishop.white { background-image: url("./assets/pieces/merida/wB.svg"); }
+:root[data-pieces="merida"] .cg-wrap piece.rook.white, :root[data-pieces="merida"] piece.rook.white { background-image: url("./assets/pieces/merida/wR.svg"); }
+:root[data-pieces="merida"] .cg-wrap piece.queen.white, :root[data-pieces="merida"] piece.queen.white { background-image: url("./assets/pieces/merida/wQ.svg"); }
+:root[data-pieces="merida"] .cg-wrap piece.king.white, :root[data-pieces="merida"] piece.king.white { background-image: url("./assets/pieces/merida/wK.svg"); }
+:root[data-pieces="merida"] .cg-wrap piece.pawn.black, :root[data-pieces="merida"] piece.pawn.black { background-image: url("./assets/pieces/merida/bP.svg"); }
+:root[data-pieces="merida"] .cg-wrap piece.knight.black, :root[data-pieces="merida"] piece.knight.black { background-image: url("./assets/pieces/merida/bN.svg"); }
+:root[data-pieces="merida"] .cg-wrap piece.bishop.black, :root[data-pieces="merida"] piece.bishop.black { background-image: url("./assets/pieces/merida/bB.svg"); }
+:root[data-pieces="merida"] .cg-wrap piece.rook.black, :root[data-pieces="merida"] piece.rook.black { background-image: url("./assets/pieces/merida/bR.svg"); }
+:root[data-pieces="merida"] .cg-wrap piece.queen.black, :root[data-pieces="merida"] piece.queen.black { background-image: url("./assets/pieces/merida/bQ.svg"); }
+:root[data-pieces="merida"] .cg-wrap piece.king.black, :root[data-pieces="merida"] piece.king.black { background-image: url("./assets/pieces/merida/bK.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.pawn.white, :root[data-pieces="mpchess"] piece.pawn.white { background-image: url("./assets/pieces/mpchess/wP.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.knight.white, :root[data-pieces="mpchess"] piece.knight.white { background-image: url("./assets/pieces/mpchess/wN.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.bishop.white, :root[data-pieces="mpchess"] piece.bishop.white { background-image: url("./assets/pieces/mpchess/wB.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.rook.white, :root[data-pieces="mpchess"] piece.rook.white { background-image: url("./assets/pieces/mpchess/wR.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.queen.white, :root[data-pieces="mpchess"] piece.queen.white { background-image: url("./assets/pieces/mpchess/wQ.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.king.white, :root[data-pieces="mpchess"] piece.king.white { background-image: url("./assets/pieces/mpchess/wK.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.pawn.black, :root[data-pieces="mpchess"] piece.pawn.black { background-image: url("./assets/pieces/mpchess/bP.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.knight.black, :root[data-pieces="mpchess"] piece.knight.black { background-image: url("./assets/pieces/mpchess/bN.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.bishop.black, :root[data-pieces="mpchess"] piece.bishop.black { background-image: url("./assets/pieces/mpchess/bB.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.rook.black, :root[data-pieces="mpchess"] piece.rook.black { background-image: url("./assets/pieces/mpchess/bR.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.queen.black, :root[data-pieces="mpchess"] piece.queen.black { background-image: url("./assets/pieces/mpchess/bQ.svg"); }
+:root[data-pieces="mpchess"] .cg-wrap piece.king.black, :root[data-pieces="mpchess"] piece.king.black { background-image: url("./assets/pieces/mpchess/bK.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.pawn.white, :root[data-pieces="chessnut"] piece.pawn.white { background-image: url("./assets/pieces/chessnut/wP.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.knight.white, :root[data-pieces="chessnut"] piece.knight.white { background-image: url("./assets/pieces/chessnut/wN.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.bishop.white, :root[data-pieces="chessnut"] piece.bishop.white { background-image: url("./assets/pieces/chessnut/wB.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.rook.white, :root[data-pieces="chessnut"] piece.rook.white { background-image: url("./assets/pieces/chessnut/wR.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.queen.white, :root[data-pieces="chessnut"] piece.queen.white { background-image: url("./assets/pieces/chessnut/wQ.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.king.white, :root[data-pieces="chessnut"] piece.king.white { background-image: url("./assets/pieces/chessnut/wK.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.pawn.black, :root[data-pieces="chessnut"] piece.pawn.black { background-image: url("./assets/pieces/chessnut/bP.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.knight.black, :root[data-pieces="chessnut"] piece.knight.black { background-image: url("./assets/pieces/chessnut/bN.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.bishop.black, :root[data-pieces="chessnut"] piece.bishop.black { background-image: url("./assets/pieces/chessnut/bB.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.rook.black, :root[data-pieces="chessnut"] piece.rook.black { background-image: url("./assets/pieces/chessnut/bR.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.queen.black, :root[data-pieces="chessnut"] piece.queen.black { background-image: url("./assets/pieces/chessnut/bQ.svg"); }
+:root[data-pieces="chessnut"] .cg-wrap piece.king.black, :root[data-pieces="chessnut"] piece.king.black { background-image: url("./assets/pieces/chessnut/bK.svg"); }
+/* Muestras de Ajustes: cada una con su propio juego, sin importar cuál esté elegido. */
+:root .swatch .pc[data-set="cburnett"] piece.knight.white { background-image: url("./assets/pieces/cburnett/wN.svg"); }
+:root .swatch .pc[data-set="merida"] piece.knight.white { background-image: url("./assets/pieces/merida/wN.svg"); }
+:root .swatch .pc[data-set="mpchess"] piece.knight.white { background-image: url("./assets/pieces/mpchess/wN.svg"); }
+:root .swatch .pc[data-set="chessnut"] piece.knight.white { background-image: url("./assets/pieces/chessnut/wN.svg"); }

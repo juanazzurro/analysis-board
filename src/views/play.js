@@ -1,6 +1,6 @@
 import { store, engines, ensureEngines, entryFromPgn, addGames, enqueueAnalysis, saveLibrary, findEntry, removeEntry } from "../state.js";
 import { Chess, tryMove, uciOf, START_FEN, moveLabel } from "../chess-util.js";
-import { makeBoard, syncBoard } from "../board.js";
+import { makeBoard, syncBoard, pickPromotion, arrow } from "../board.js";
 import { $, esc, segBind, segValue, segSet, playerStrip, toast } from "../ui.js";
 import { tr } from "../i18n.js";
 
@@ -29,6 +29,7 @@ export function initPlay(h) {
   $("plStart").onclick = start;
   $("plNew").onclick = setup;
   $("plUndo").onclick = undo;
+  $("plHint").onclick = hint;
   $("plResign").onclick = resign;
   $("plAnalyse").onclick = analyse;
   $("plMoves").addEventListener("click", () => {});
@@ -44,7 +45,7 @@ export function playFrom(fen, color) {
 }
 
 function setup() {
-  cancelThink();
+  cancelThink(); clearHint();
   $("plSetup").hidden = false; $("plGame").hidden = true;
   P.over = null; P.chess = null;
 }
@@ -57,7 +58,7 @@ async function start() {
   P.from = $("plFromRow").hidden ? "start" : segValue($("plFrom")).f || "start";
   P.startFen = P.from === "pos" && P.pendingFen ? P.pendingFen : START_FEN;
   try { P.chess = new Chess(P.startFen); } catch (e) { P.chess = new Chess(); P.startFen = START_FEN; }
-  P.history = []; P.over = null; P.resigned = false;
+  P.history = []; P.over = null; P.resigned = false; P.hint = null; P.hints = 0;
   $("plSetup").hidden = true; $("plGame").hidden = false;
   $("plLevelNow").textContent = LEVELS[P.level - 1].label;
   if (!engines.play.ready) {
@@ -70,12 +71,31 @@ async function start() {
   if (P.chess.turn() !== P.user) engineMove();
 }
 
+function clearHint() { P.hint = null; if (P.hintJob) { P.hintJob.cancel(); P.hintJob = null; } }
+/** Pista: el motor (a toda su fuerza) marca con una flecha la jugada que haría en tu lugar. */
+async function hint() {
+  if (!P.chess || P.over || P.thinking || P.chess.turn() !== P.user) return;
+  const fen = P.chess.fen();
+  if (!engines.live.ready) { await ensureEngines(); if (!engines.live.ready) { toast(tr("El motor no está disponible para dar una pista.", "The engine isn't available to give a hint.")); return; } }
+  clearHint();
+  $("plHint").disabled = true;
+  engines.live.configure({ MultiPV: 1 });
+  const job = engines.live.search(fen, "depth 18 movetime 1200");
+  P.hintJob = job;
+  const r = await job.promise;
+  if (P.hintJob !== job) return;
+  P.hintJob = null;
+  if (r && r.best && P.chess && P.chess.fen() === fen && !P.over) { P.hint = r.best; P.hints = (P.hints || 0) + 1; }
+  render();
+}
 function cancelThink() { if (P.job) { P.job.cancel(); P.job = null; } P.thinking = false; }
 
-function onMove(orig, dest) {
+async function onMove(orig, dest, promo) {
   if (!P.chess || P.over || P.thinking || P.chess.turn() !== P.user) { render(); return; }
-  const piece = P.chess.get(orig);
-  const promo = piece && piece.type === "p" && (dest[1] === "8" || dest[1] === "1") ? "q" : undefined;
+  const fen0 = P.chess.fen();
+  if (promo === undefined) promo = await pickPromotion(P.cg, P.chess, orig, dest);
+  if (promo === null || !P.chess || P.chess.fen() !== fen0 || P.over) { render(); return; }
+  clearHint();
   const m = tryMove(P.chess, { from: orig, to: dest, promotion: promo });
   if (!m) { render(); return; }
   P.history.push({ uci: uciOf(m), san: m.san, from: m.from, to: m.to, color: m.color });
@@ -118,7 +138,7 @@ function checkOver() {
 }
 function undo() {
   if (!P.chess || P.history.length === 0) return;
-  cancelThink();
+  cancelThink(); clearHint();
   let n = P.chess.turn() === P.user ? 2 : 1;
   if (P.over) n = P.chess.turn() === P.user ? 2 : 1;
   for (let i = 0; i < n && P.history.length; i++) { P.chess.undo(); P.history.pop(); }
@@ -169,7 +189,9 @@ function render(sound) {
   const c = P.chess;
   if (!c) return;
   const last = P.history[P.history.length - 1];
-  syncBoard(P.cg, c, { orientation: P.user === "w" ? "white" : "black", lastMove: last ? [last.from, last.to] : undefined, movable: !P.over && !P.thinking && c.turn() === P.user ? P.user : false, sound });
+  const myTurn = !P.over && !P.thinking && c.turn() === P.user;
+  syncBoard(P.cg, c, { orientation: P.user === "w" ? "white" : "black", lastMove: last ? [last.from, last.to] : undefined, movable: myTurn ? P.user : false, shapes: P.hint && myTurn ? [arrow(P.hint, "best")] : [], sound });
+  $("plHint").disabled = !myTurn;
   stripsFor(c);
   $("plStatus").textContent = P.over || (P.thinking ? tr("Stockfish está pensando…", "Stockfish is thinking…") : c.turn() === P.user ? tr("Te toca", "Your move") : tr("Turno de Stockfish", "Stockfish to move"));
   $("plUndo").disabled = !P.history.length; $("plResign").disabled = !!P.over;

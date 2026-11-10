@@ -5,7 +5,7 @@ import { tr, pieceOn } from "../i18n.js";
 import { diagnoseEntry, nullMoveFen } from "../motifs.js";
 import { isSolved, isDue, isMastered, recordResult, nextReviewText } from "../srs.js";
 import { isFork, listTargets } from "../explain.js";
-import { makeBoard, syncBoard, arrow } from "../board.js";
+import { makeBoard, syncBoard, arrow, pickPromotion } from "../board.js";
 import { $, esc, segBind, segSet, playerStrip, fmtDate } from "../ui.js";
 
 const T = { mode: "new", goal: null, list: [], i: 0, ex: null, step: "find", tries: 0, errors: 0, msg: null, checking: null, cg: null };
@@ -120,8 +120,8 @@ async function onMove(orig, dest) {
   const ex = T.ex; if (!ex) return;
   if (T.step === "find") {
     const c = new Chess(ex.nullFen);
-    const piece = c.get(orig);
-    const promo = piece && piece.type === "p" && (dest[1] === "8" || dest[1] === "1") ? "q" : undefined;
+    const promo = await pickPromotion(T.cg, c, orig, dest);
+    if (promo === null || T.ex !== ex) { render(true); return; }
     const m = tryMove(c, { from: orig, to: dest, promotion: promo });
     if (!m) { render(true); return; }
     const tc = new Chess(ex.nullFen); const tm = tryMove(tc, ex.threat);
@@ -138,8 +138,8 @@ async function onMove(orig, dest) {
   }
   if (T.step === "defend") {
     const c = new Chess(ex.fen);
-    const piece = c.get(orig);
-    const promo = piece && piece.type === "p" && (dest[1] === "8" || dest[1] === "1") ? "q" : undefined;
+    const promo = await pickPromotion(T.cg, c, orig, dest);
+    if (promo === null || T.ex !== ex) { render(true); return; }
     const m = tryMove(c, { from: orig, to: dest, promotion: promo });
     if (!m) { render(true); return; }
     syncBoard(T.cg, c, { orientation: ex.color === "w" ? "white" : "black", lastMove: [m.from, m.to], movable: false, sound: { captured: !!m.captured, check: m.san.includes("+") } });

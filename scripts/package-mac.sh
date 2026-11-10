@@ -47,12 +47,19 @@ cp "$CACHE/stockfish/stockfish-macos-m1-apple-silicon" "$RES/stockfish"
 chmod 755 "$RES/stockfish"
 cp "$CACHE/stockfish/Copying.txt" "$RES/stockfish-LICENSE.txt"
 cp node_modules/chessground/LICENSE "$RES/chessground-LICENSE.txt"
+# Licencias de las tipografías y de las piezas incluidas
+mkdir -p "$RES/licenses"
+cp THIRD-PARTY.md "$RES/licenses/"
+cp node_modules/@fontsource-variable/source-serif-4/LICENSE "$RES/licenses/SourceSerif4-OFL.txt"
+cp node_modules/@fontsource-variable/ibm-plex-sans/LICENSE "$RES/licenses/IBMPlexSans-OFL.txt"
+cp node_modules/@fontsource/noto-sans-symbols-2/LICENSE "$RES/licenses/NotoSansSymbols2-OFL.txt"
+cp src/assets/pieces/chessnut/LICENSE.txt "$RES/licenses/Chessnut-Apache-2.0.txt"
 
 # 4. El código de la app
 A="$RES/app"
 mkdir -p "$A/renderer" "$A/data" "$A/vendor"
 cp main.js preload.js "$A/"
-cp renderer/index.html renderer/app.js renderer/styles.css "$A/renderer/"
+cp -R renderer/. "$A/renderer/"
 cp data/puzzles-base.json "$A/data/"
 cp vendor/fzstd.js vendor/fzstd-LICENSE "$A/vendor/"
 node -e '
@@ -72,7 +79,12 @@ def edit(path, fn):
 def main(d):
     d.update(CFBundleIdentifier=bid, CFBundleName=name, CFBundleDisplayName=name, CFBundleShortVersionString=ver, CFBundleVersion=ver,
              CFBundleIconFile="icon.icns", LSApplicationCategoryType="public.app-category.education", GCSupportsGameMode=False,
-             NSHumanReadableCopyright="Stockfish 18 (GPL-3.0) · chessground (GPL-3.0) · piezas cburnett (CC BY-SA 3.0)")
+             NSHumanReadableCopyright="GPL-3.0. Stockfish 18, chessground, chess.js.",
+             # Los archivos .pgn se pueden abrir con la app desde el Finder ("Abrir con").
+             CFBundleDocumentTypes=[dict(CFBundleTypeName="Portable Game Notation", CFBundleTypeRole="Viewer", LSHandlerRank="Alternate",
+                                         CFBundleTypeExtensions=["pgn"], LSItemContentTypes=["com.chess.pgn", "public.plain-text"])],
+             UTImportedTypeDeclarations=[dict(UTTypeIdentifier="com.chess.pgn", UTTypeDescription="Portable Game Notation",
+                                              UTTypeConformsTo=["public.plain-text"], UTTypeTagSpecification={"public.filename-extension": ["pgn"], "public.mime-type": ["application/x-chess-pgn"]})])
     d.pop("ElectronAsarIntegrity", None)
 edit(os.path.join(app, "Contents", "Info.plist"), main)
 fw = os.path.join(app, "Contents", "Frameworks")

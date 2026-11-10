@@ -1,7 +1,7 @@
 {
   "name": "analysis-board",
   "productName": "Analysis Board",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "Chess analysis and training app for Mac with Stockfish 18: diagnosis of your mistakes, threats, puzzles, endgames and a daily plan. In English and Spanish.",
   "main": "main.js",
   "scripts": {
@@ -31,6 +31,9 @@
     "fzstd": "^0.1.1"
   },
   "devDependencies": {
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
+    "@fontsource-variable/source-serif-4": "^5.3.1",
+    "@fontsource/noto-sans-symbols-2": "^5.3.0",
     "electron": "^45.2.1",
     "esbuild": "^0.28.2"
   }
