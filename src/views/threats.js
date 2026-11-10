@@ -2,7 +2,8 @@
 import { store, on, emit, gameOf, detectUserColor, saveTraining, engines, ensureEngines, findEntry, logActivity, enqueueAnalysis, libSignature } from "../state.js";
 import { Chess, tryMove, uciOf, pvToSan, moveLabel, wp, toCp, scoreFromInfo } from "../chess-util.js";
 import { tr, pieceOn } from "../i18n.js";
-import { diagnoseEntry, nullMoveFen } from "../motifs.js";
+import { nullMoveFen } from "../motifs.js";
+import { gameSoon, diagSoon } from "../warm.js";
 import { isSolved, isDue, isMastered, recordResult, nextReviewText } from "../srs.js";
 import { isFork, listTargets } from "../explain.js";
 import { makeBoard, syncBoard, arrow, pickPromotion } from "../board.js";
@@ -30,6 +31,7 @@ export function initThreats(h) {
   });
   window.__mesaThreats = { move: (o, d) => onMove(o, d), state: () => ({ n: T.list.length, i: T.i, step: T.step, ex: T.ex && { id: T.ex.id, threat: T.ex.threat, best: T.ex.best, played: T.ex.played }, msg: T.msg && T.msg.text }) };
   on("library", updateCount); on("training", updateCount);
+  on("warm", () => { updateCount(); if (!$("view-threats").hidden && !T.ex) rebuild(); });
 }
 
 let thCache = null, thKey = "";
@@ -43,8 +45,8 @@ function buildThreats() {
   const out = [];
   for (const e of store.library) {
     const uc = detectUserColor(e); if (!uc || !e.analysis) continue;
-    let g; try { g = gameOf(e); } catch (err) { continue; }
-    const d = diagnoseEntry(e, g, uc); if (!d) continue;
+    const g = gameSoon(e); if (!g) continue;          // todavía se está leyendo en segundo plano
+    const d = diagSoon(e, uc); if (!d) continue;
     for (const it of d.items) {
       if (!it.threat) continue;
       const k = it.k, fen = g.fens[k], nf = nullMoveFen(fen);

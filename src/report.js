@@ -8,6 +8,7 @@ import { CLS } from "./analysis.js";
 import { openingFamilyEs } from "./openings.js";
 import { tr, EN, fmt1 } from "./i18n.js";
 import { dayKey, addDays, startOfDay } from "./srs.js";
+import { bookOf } from "./eco.js";
 
 const DAY = 86400000;
 const pc = (x) => Math.round(x) + "%";
@@ -120,7 +121,10 @@ export function gameReport(entry, game, uc) {
   {
     const u = U[Math.min(mid, U.length - 1)];
     const errs = inPhase(mineE, 0, mid);
-    let s = fam && fam !== other ? tr(`Apertura: ${fam}. `, `Opening: ${fam}. `) : "";
+    // Nombre exacto y código ECO, del libro de aperturas; y hasta dónde llegó la teoría conocida.
+    const book = bookOf(game), exact = book.name ? `${book.eco} ${book.name}` : "";
+    let s = fam && fam !== other ? tr(`Apertura: ${fam}${exact ? ` (${exact})` : ""}. `, `Opening: ${fam}${exact ? ` (${exact})` : ""}. `) : exact ? tr(`Apertura: ${exact}. `, `Opening: ${exact}. `) : "";
+    if (book.ply >= 4 && book.ply < n) s += tr(`La teoría conocida llegó hasta la jugada ${Math.ceil(book.ply / 2)}. `, `Known theory lasted until move ${Math.ceil(book.ply / 2)}. `);
     if (mid >= n) s += uc ? tr(`La partida no salió de la apertura; terminaste ${standing(U[U.length - 1])}.`, `The game never left the opening; you finished ${standing(U[U.length - 1])}.`) : tr(`La partida no salió de la apertura.`, `The game never left the opening.`);
     else s += uc ? tr(`Saliste de la apertura ${standing(u)} (${ev(an.evals[mid])} en la jugada ${moveNo(mid)})`, `You came out of the opening ${standing(u)} (${ev(an.evals[mid])} on move ${moveNo(mid)})`)
       : tr(`${subj} salió de la apertura ${standing(u)} (${ev(an.evals[mid])} en la jugada ${moveNo(mid)})`, `${subj} came out of the opening ${standing(u)} (${ev(an.evals[mid])} on move ${moveNo(mid)})`);

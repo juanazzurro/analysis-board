@@ -1,6 +1,8 @@
 // Estadísticas sobre tus partidas analizadas: debilidades, etapas, reloj, ritmos, progreso y aperturas.
-import { store, gameOf, detectUserColor, saveLibrary, libSignature } from "./state.js";
-import { diagnoseEntry, MOTIFS } from "./motifs.js";
+import { store, detectUserColor, libSignature } from "./state.js";
+import { MOTIFS } from "./motifs.js";
+import { gameSoon, diagSoon } from "./warm.js";
+import { bookOf } from "./eco.js";
 import { openingName } from "./chess-util.js";
 import { tr } from "./i18n.js";
 import { openingFamilyEs } from "./openings.js";
@@ -32,23 +34,21 @@ export function computeInsights(from = 0) {
   const key = libKey() + ":" + from;
   let cache = caches.get(from);
   if (cache && cache.key === key) return cache;
-  const games = [], all = []; let pendingAnalysis = 0, own = 0, changed = false;
+  const games = [], all = []; let pendingAnalysis = 0, pendingDiag = 0, own = 0;
   for (const e of store.library) {
     const uc = detectUserColor(e); if (!uc) continue;
     own++;
     if (from && (e.date || 0) < from) continue;
-    let g; try { g = gameOf(e); } catch (err) { continue; }
-    const opening = openingName(e, g.headers);
+    // La partida se lee en segundo plano: si todavía no está, entra en la próxima pasada (evento "warm").
+    const g = gameSoon(e); if (!g) { pendingDiag++; continue; }
+    const opening = openingName(e, g.headers) || bookOf(g).name;
     // Para aperturas y ritmos alcanza con el resultado: entran todas tus partidas, analizadas o no.
     all.push({ e, uc, score: scoreFor(e, uc), speed: speedOf(e, g), family: openingFamilyEs(opening, g.moves.slice(0, 8).map((m) => m.san)), st: e.analysis && e.analysis.stats ? e.analysis.stats[uc] : null, date: e.date || 0, analysed: !!e.analysis });
     if (!e.analysis) { pendingAnalysis++; continue; }
-    const before = e.diag;
-    const d = diagnoseEntry(e, g, uc);
-    if (d !== before) changed = true;
+    const d = diagSoon(e, uc); if (!d) { pendingDiag++; continue; }
     const st = e.analysis.stats ? e.analysis.stats[uc] : null;
     games.push({ e, g, uc, d, st, score: scoreFor(e, uc), speed: speedOf(e, g), opening, date: e.date || 0 });
   }
-  if (changed) saveLibrary();
   games.sort((a, b) => a.date - b.date);
 
   // Errores por motivo (los blunders pesan un poco más que los errores).
@@ -105,7 +105,7 @@ export function computeInsights(from = 0) {
     return { now: sumWeek(startOfDay(weekStart), now + 1), prev: sumWeek(startOfDay(prevStart), startOfDay(weekStart)) };
   };
 
-  cache = { key, from, own, pendingAnalysis, games, all, items, ranked, top, phases, pressure, speeds, trend, openings, totalErrors: items.length };
+  cache = { key, from, own, pendingAnalysis, pendingDiag, games, all, items, ranked, top, phases, pressure, speeds, trend, openings, totalErrors: items.length };
   Object.defineProperty(cache, "weekly", { get: weeklyOf, enumerable: true });
   caches.set(from, cache);
   return cache;

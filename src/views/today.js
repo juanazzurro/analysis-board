@@ -28,6 +28,7 @@ export function initToday(h) {
     else if (a === "analyse") { analyseMissing(); render(); }
   });
   on("queue", () => { if (!$("view-today").hidden) render(); });
+  on("warm", (p) => { if (!p.pending && !$("view-today").hidden) render(); });
   on("activity", () => { markComplete(); if (!$("view-today").hidden) render(); updateBadge(); });
   updateBadge();
 }
@@ -91,6 +92,8 @@ function render() {
   if (ins.top.length) {
     const m = ins.top[0], info = MOTIFS[m.motif];
     h += `<div class="focus card"><div class="eyebrow">${tr("Tu foco esta semana", "Your focus this week")}</div><h2>${esc(info.label)}</h2><p>${esc(info.tip)}</p><button class="linkbtn" type="button" data-act="goto" data-view="diagnosis">${tr("Ver tu diagnóstico completo", "See your full diagnosis")}</button></div>`;
+  } else if (ins.pendingDiag) {
+    h += `<div class="focus card"><div class="eyebrow">${tr("Tu foco", "Your focus")}</div><h2>${tr("Preparando tu diagnóstico…", "Preparing your diagnosis…")}</h2><p>${tr(`Estoy clasificando los errores de ${ins.pendingDiag} ${ins.pendingDiag === 1 ? "partida" : "partidas"}. Aparece acá apenas termine.`, `Classifying the mistakes in ${ins.pendingDiag} ${ins.pendingDiag === 1 ? "game" : "games"}. It will show up here as soon as it's done.`)}</p></div>`;
   } else {
     const pend = store.library.filter((e) => !e.analysis && detectUserColor(e)).length;
     h += `<div class="focus card"><div class="eyebrow">${tr("Tu foco", "Your focus")}</div><h2>${pend ? tr("Analizá tus partidas", "Analyze your games") : tr("Traé tus partidas", "Bring in your games")}</h2><p>${pend ? tr(`Tenés ${pend} partidas sin analizar. Con el análisis, el plan de cada día se arma según tus errores.`, `You have ${pend} games not analyzed yet. Once they are, each day's plan is built from your own mistakes.`) : tr("Importá tus partidas de Lichess o Chess.com para que el plan se arme según tus errores.", "Import your games from Lichess or Chess.com so the plan is built from your mistakes.")}</p><button class="btn small" type="button" data-act="goto" data-view="${pend ? "diagnosis" : "library"}">${pend ? tr("Ir al diagnóstico", "Go to diagnosis") : tr("Ir a Partidas", "Go to Games")}</button></div>`;

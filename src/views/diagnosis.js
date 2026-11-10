@@ -1,6 +1,7 @@
 // Diagnóstico: tus errores repetidos, cuándo aparecen, cómo venís y con qué aperturas.
 import { store, on, detectUserColor, enqueueAnalysis, progress, queueLength } from "../state.js";
 import { computeInsights, SPEED_LABEL } from "../insights.js";
+import { warmProgress } from "../warm.js";
 import { MOTIFS } from "../motifs.js";
 import { PHASE_LABEL, moveLabel } from "../chess-util.js";
 import { $, esc, fmtDate } from "../ui.js";
@@ -22,6 +23,8 @@ export function initDiagnosis(h) {
     else if (a === "goto") hooks.goView(t.dataset.view);
   });
   on("analysed", () => { if (!$("view-diagnosis").hidden) render(); });
+  // El diagnóstico de bibliotecas grandes se arma en segundo plano: mientras avanza solo cambia el aviso; al terminar se redibuja todo.
+  on("warm", (p) => { if ($("view-diagnosis").hidden) return; const el = $("dgPrep"); if (p.pending && el) el.textContent = prepText(p.pending); else render(); });
   on("queue", () => { if (!$("view-diagnosis").hidden) renderQueue(); });
   on("progress", () => { if (!$("view-diagnosis").hidden) renderQueue(); });
 }
@@ -77,6 +80,8 @@ function periodHtml() {
   return h + `</div></section>`;
 }
 
+const prepText = (n) => tr(`Preparando el diagnóstico de ${n} ${n === 1 ? "partida" : "partidas"}… Se completa solo, podés seguir usando la app.`, `Preparing the diagnosis of ${n} ${n === 1 ? "game" : "games"}… It fills in by itself; you can keep using the app.`);
+
 function render() {
   const root = $("dgBody");
   if (!range) { const m = computeInsights(rangeStart("month")); range = m.games.length >= 5 ? "month" : "all"; }
@@ -93,11 +98,12 @@ function render() {
     const p = ins.pendingAnalysis;
     h += `<div class="dg-pending"><span>${tr(`Te ${p === 1 ? "falta 1 partida" : `faltan ${p} partidas`} por analizar. Cuantas más, más preciso el diagnóstico.`, `${p} ${p === 1 ? "game" : "games"} still to analyze. The more games, the more accurate the diagnosis.`)}</span><button class="btn small primary" type="button" data-act="analyse">${tr("Analizar ahora", "Analyze now")} (${minutesFor(p)})</button></div>`;
   }
+  if (ins.pendingDiag) h += `<div class="dg-pending prep"><span class="spin" aria-hidden="true"></span><span id="dgPrep" role="status">${prepText(warmProgress().pending || ins.pendingDiag)}</span></div>`;
   h += `<div id="dgQueue"></div></div>`;
   if (range !== "all") h += periodHtml();
   if (range !== "all" && !ins.all.length) { root.innerHTML = h; renderQueue(); return; }
 
-  if (!n) { root.innerHTML = h + `<div class="card empty-big"><h2>${tr("Falta analizar tus partidas", "Your games still need analyzing")}</h2><p>${tr("Apenas termine el análisis vas a ver acá tus puntos débiles. Mientras tanto, esto sale solo de tus resultados:", "As soon as the analysis finishes you'll see your weak spots here. Meanwhile, this comes from your results alone:")}</p></div>` + speedsHtml(ins) + openingsHtml(ins); renderQueue(); return; }
+  if (!n) { root.innerHTML = h + `<div class="card empty-big"><h2>${ins.pendingDiag ? tr("Preparando tu diagnóstico…", "Preparing your diagnosis…") : tr("Falta analizar tus partidas", "Your games still need analyzing")}</h2><p>${tr("Apenas termine el análisis vas a ver acá tus puntos débiles. Mientras tanto, esto sale solo de tus resultados:", "As soon as the analysis finishes you'll see your weak spots here. Meanwhile, this comes from your results alone:")}</p></div>` + speedsHtml(ins) + openingsHtml(ins); renderQueue(); return; }
 
   // 1. Puntos débiles
   h += `<section class="dg-sec"><h2 class="sec-title">${tr("Tus puntos débiles", "Your weak spots")}</h2><div class="weak-grid">`;

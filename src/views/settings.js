@@ -22,6 +22,7 @@ export async function initSettings(hooks = {}) {
   $("stSound").checked = !!s.sound;
   $("stInacc").checked = !!s.learnInacc;
   $("stSelfReview").checked = s.selfReview !== false;
+  $("stAutoImport").checked = s.autoImport !== false;
   $("stDaily").value = String(s.dailyPuzzles || 10);
   $("stKey").value = s.aiKey || "";
   $("stModel").value = s.aiModel || MODEL;
@@ -30,6 +31,7 @@ export async function initSettings(hooks = {}) {
   try { $("stPath").textContent = await window.api.storePath(); } catch (e) {}
   $("stVersion").textContent = store.sys.version || "–";
   $("stLang").value = LANG;
+  $("stTextSize").value = String(s.textSize || 100);
 
   const save = (k, v, after) => { store.settings[k] = v; saveSettings(); if (after) after(); };
 
@@ -49,6 +51,7 @@ export async function initSettings(hooks = {}) {
   $("stPieces").addEventListener("click", (e) => { const b = e.target.closest("[data-pieces]"); if (b) save("pieces", b.dataset.pieces, () => { applyAppearance(); swatches(); }); });
   // La notación y el idioma cambian todos los textos: se guarda el ajuste y se recarga la interfaz.
   $("stNotation").addEventListener("change", async (e) => { store.settings.notation = e.target.value; await saveSettings(); window.api.reload(); });
+  $("stTextSize").addEventListener("change", (e) => save("textSize", +e.target.value, () => { window.api.setZoom(+e.target.value / 100); window.dispatchEvent(new Event("resize")); }));
   $("stLang").addEventListener("change", async (e) => { store.settings.lang = e.target.value; await saveSettings(); window.api.setLang(e.target.value); });
   $("stSound").addEventListener("change", (e) => save("sound", e.target.checked, () => setSoundEnabled(e.target.checked)));
 
@@ -67,6 +70,7 @@ export async function initSettings(hooks = {}) {
   $("stHash").addEventListener("change", (e) => save("hash", +e.target.value, restart));
   $("stInacc").addEventListener("change", (e) => save("learnInacc", e.target.checked, () => emit("library")));
   $("stSelfReview").addEventListener("change", (e) => save("selfReview", e.target.checked));
+  $("stAutoImport").addEventListener("change", (e) => save("autoImport", e.target.checked));
   $("stDaily").addEventListener("change", (e) => save("dailyPuzzles", +e.target.value, () => emit("activity")));
 
   /* ---- IA ---- */
@@ -111,4 +115,17 @@ export async function initSettings(hooks = {}) {
   $("stRestore").onclick = restoreBackup;
   $("stExportAll").onclick = exportAllGames;
   $("stShortcuts").onclick = () => hooks.runCommand && hooks.runCommand("shortcuts");
+  $("stLog").onclick = async () => {
+    try {
+      const text = await window.api.supportReport();
+      const r = await window.api.saveFile({ name: "analysis-board-log.txt", text, kind: "txt" });
+      if (r && r.saved) $("stHelpMsg").textContent = tr("Registro guardado.", "Log saved.");
+    } catch (e) { toast(cleanErr(e), 5000); }
+  };
+  $("stReport").onclick = () => {
+    const v = store.sys.version || "";
+    const body = tr(`**Qué pasó**\n\n\n**Qué esperabas que pasara**\n\n\n**Pasos para repetirlo**\n1. \n\n---\nAnalysis Board ${v} · ${store.sys.platform || ""}\n(Adjuntá el registro: Ajustes → Ayuda → Exportar registro)`,
+      `**What happened**\n\n\n**What you expected**\n\n\n**Steps to reproduce**\n1. \n\n---\nAnalysis Board ${v} · ${store.sys.platform || ""}\n(Attach the log: Settings → Help → Export log)`);
+    window.api.openExternal("https://github.com/juanazzurro/analysis-board/issues/new?body=" + encodeURIComponent(body));
+  };
 }

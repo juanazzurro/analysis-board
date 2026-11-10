@@ -36,8 +36,10 @@ From version 2 on, the app tells you when a new version is out and updates itsel
 
 **Analyze**
 
-- **Games**: import your latest games from Lichess or Chess.com by username, open or drag in PGN files, or paste a PGN. Each game is analyzed in the background with Stockfish 18. Filter by result and time control, sort by date or accuracy.
+- **Games**: import your games from Lichess or Chess.com by username; from then on the app brings in the new ones by itself when it opens. You can also open or drag in PGN files, or paste a PGN. Each game is analyzed in the background with Stockfish 18. Filter by result and time control, sort by date or accuracy.
 - **Move by move**: every move is classified (best, good, inaccuracy, mistake, blunder) with an explanation in plain words: what you lost, what your opponent threatened and what was better.
+- **Opening book**: 3,865 named openings. The app shows the exact opening and ECO code of each game, marks book moves and tells you where the game left known theory.
+- **Your own comments**: write notes on any move. They are saved with the game and exported in the PGN together with the engine evaluations.
 - **Live engine**: at any position Stockfish shows its best lines. Click a move in a line to see it on the board, or press the space bar to play the engine's recommendation, for your side or your opponent's. You can also have the engine answer your moves automatically.
 - **Variations**: move the pieces anywhere in a game to try other ideas. Variations can branch and nest, they are saved with the game and exported in the PGN.
 - **Free board**: analyze any position from a FEN, or enter a game by hand and save it.
@@ -76,6 +78,7 @@ From version 2 on, the app tells you when a new version is out and updates itsel
 | ↑ ↓ | Previous and next mistake in the game |
 | Space | Play the engine's recommended move on the board |
 | F, A | Flip the board, show or hide the engine arrows |
+| M | Type a move (Nf3, e4, O-O) instead of dragging the piece |
 | ⌫, Esc | Delete the current variation, go back to the game |
 | ⌘1 … ⌘9 | Switch section |
 | ⌘N, ⌘O, ⌘S | Free board, open a PGN file, export the open game |
@@ -83,7 +86,7 @@ From version 2 on, the app tells you when a new version is out and updates itsel
 
 ### Privacy
 
-Your games, analysis and progress are stored only on your Mac (in `~/Library/Application Support`), with an automatic daily copy. The app connects to the internet only to import games from Lichess or Chess.com, to download the optional full puzzle database, to ask GitHub whether there is a new version (optional), and, if you add your own Anthropic API key in Settings, for optional AI explanations. Without a key everything works offline.
+Your games, analysis and progress are stored only on your Mac (in `~/Library/Application Support`), with an automatic daily copy; only your macOS user can read those files. The app connects to the internet only to import games from Lichess or Chess.com (including the new games it brings in when it opens, which you can turn off in Settings), to download the optional full puzzle database, to ask GitHub whether there is a new version (optional), and, if you add your own Anthropic API key in Settings, for optional AI explanations. Without a key everything works offline.
 
 ## Building from source
 
@@ -103,11 +106,20 @@ npm run package:mac
 
 `npm run package:mac` downloads Electron 45 and the official Stockfish 18 build for Apple Silicon, assembles the app bundle and signs it ad hoc. It works on macOS (`codesign`, `ditto`) and also on Linux (with [`rcodesign`](https://github.com/indygreg/apple-platform-rs) on the `PATH`).
 
-The interface lives in `src/` (plain JavaScript modules bundled with esbuild into `renderer/`), and the Electron main process is in `main.js`. All text is bilingual through `tr("español", "English")` in `src/i18n.js`. Tests for the analysis logic are in `test/` (see the header of each file for how to run it).
+The interface lives in `src/` (plain JavaScript modules bundled with esbuild into `renderer/`), and the Electron main process is in `main.js`. All text is bilingual through `tr("español", "English")` in `src/i18n.js`. Opening names come from `data/eco/` (the Lichess openings table); `node tools/build-eco.mjs` regenerates `src/eco-data.js`. Why the typefaces are the ones they are is in [docs/TYPOGRAPHY.md](docs/TYPOGRAPHY.md).
+
+### Tests
+
+```sh
+npm test          # PGN reader, opening book, variation tree, reports and explanations in both languages
+npm run test:ui   # drives the real app through every screen in Spanish and English (needs bin/stockfish; on Linux, xvfb)
+```
+
+The interface tests open the app with a list of steps (`MESA_SHOTS`) on a sample library (`test/fixture/demo`), take screenshots into `test/ui/out/` and fail on any interface error, untranslated text or overflowing element. On every push GitHub Actions runs both suites on Linux, then builds the app on an Apple Silicon Mac and tests the packaged app there (`scripts/test-mac.sh`): it starts, the native engine answers, a `.pgn` opens through "Open With", an update with the wrong checksum is refused and a good one replaces the app and reopens it. Publishing a release runs the same build and attaches `Analysis-Board-mac.zip` to it.
 
 ## Credits and licenses
 
-Analysis Board is free software under the [GNU GPL v3 or later](LICENSE). It builds on [Stockfish 18](https://stockfishchess.org), [chessground](https://github.com/lichess-org/chessground) and [chess.js](https://github.com/jhlywa/chess.js), free piece sets, open typefaces (Source Serif 4, IBM Plex Sans) and the [Lichess puzzle database](https://database.lichess.org/#puzzles). The full list with authors and licenses is in [THIRD-PARTY.md](THIRD-PARTY.md).
+Analysis Board is free software under the [GNU GPL v3 or later](LICENSE). It builds on [Stockfish 18](https://stockfishchess.org), [chessground](https://github.com/lichess-org/chessground) and [chess.js](https://github.com/jhlywa/chess.js), free piece sets, open typefaces (Asap, Piazzolla, Chivo Mono) and the [Lichess puzzle database](https://database.lichess.org/#puzzles). The full list with authors and licenses is in [THIRD-PARTY.md](THIRD-PARTY.md).
 
 Not affiliated with Lichess, Chess.com or the Stockfish project.
 
@@ -149,8 +161,10 @@ Desde la versión 2, la app te avisa cuando sale una versión nueva y se actuali
 
 **Analizar**
 
-- **Partidas**: importá tus últimas partidas de Lichess o Chess.com con tu usuario, abrí o arrastrá archivos PGN, o pegá un PGN. Cada partida se analiza en segundo plano con Stockfish 18. Filtrá por resultado y ritmo, ordená por fecha o precisión.
+- **Partidas**: importá tus partidas de Lichess o Chess.com con tu usuario; desde ahí la app trae sola las nuevas cada vez que se abre. También podés abrir o arrastrar archivos PGN, o pegar un PGN. Cada partida se analiza en segundo plano con Stockfish 18. Filtrá por resultado y ritmo, ordená por fecha o precisión.
 - **Jugada a jugada**: cada jugada se clasifica (mejor, buena, imprecisión, error, blunder) con una explicación simple: qué perdiste, qué amenazaba tu rival y qué era mejor.
+- **Libro de aperturas**: 3.865 aperturas con nombre. La app muestra la apertura exacta y el código ECO de cada partida, marca las jugadas de libro y te dice dónde la partida salió de la teoría conocida.
+- **Tus comentarios**: escribí notas en cualquier jugada. Se guardan con la partida y salen en el PGN junto con las evaluaciones del motor.
 - **Motor en vivo**: en cualquier posición Stockfish muestra sus mejores líneas. Tocá una jugada de una línea para verla en el tablero, o apretá la barra espaciadora para jugar la que recomienda, para tu bando o el de tu rival. También podés hacer que el motor responda solo a tus jugadas.
 - **Variantes**: mové las piezas en cualquier momento de una partida para probar otras ideas. Las variantes se pueden ramificar y anidar, quedan guardadas con la partida y salen en el PGN.
 - **Tablero libre**: analizá cualquier posición desde un FEN, o cargá una partida a mano y guardala.
@@ -194,12 +208,12 @@ Desde la versión 2, la app te avisa cuando sale una versión nueva y se actuali
 
 #### Privacidad
 
-Tus partidas, análisis y progreso se guardan solo en tu Mac (en `~/Library/Application Support`), con una copia automática por día. La app se conecta a internet únicamente para importar partidas de Lichess o Chess.com, para bajar la base completa de problemas (opcional), para preguntarle a GitHub si hay una versión nueva (opcional) y, si cargás tu propia clave de la API de Anthropic en Ajustes, para las explicaciones con IA (opcionales). Sin clave, todo funciona sin conexión.
+Tus partidas, análisis y progreso se guardan solo en tu Mac (en `~/Library/Application Support`), con una copia automática por día; solo tu usuario de la Mac puede leer esos archivos. La app se conecta a internet únicamente para importar partidas de Lichess o Chess.com (incluidas las nuevas que trae al abrir, que se puede apagar en Ajustes), para bajar la base completa de problemas (opcional), para preguntarle a GitHub si hay una versión nueva (opcional) y, si cargás tu propia clave de la API de Anthropic en Ajustes, para las explicaciones con IA (opcionales). Sin clave, todo funciona sin conexión.
 
 ### Compilar desde el código
 
-Las instrucciones están [más arriba, en inglés](#building-from-source): `npm install`, `npm start` para desarrollo y `npm run package:mac` para armar la app.
+Las instrucciones están [más arriba, en inglés](#building-from-source): `npm install`, `npm start` para desarrollo, `npm test` y `npm run test:ui` para las pruebas, y `npm run package:mac` para armar la app.
 
 ### Créditos y licencias
 
-Analysis Board es software libre bajo la [GNU GPL v3 o posterior](LICENSE). Usa Stockfish 18, chessground, chess.js, juegos de piezas libres, tipografías abiertas (Source Serif 4, IBM Plex Sans) y la base de problemas de Lichess. La lista completa, con autores y licencias, está en [THIRD-PARTY.md](THIRD-PARTY.md). No está afiliada a Lichess, Chess.com ni al proyecto Stockfish.
+Analysis Board es software libre bajo la [GNU GPL v3 o posterior](LICENSE). Usa Stockfish 18, chessground, chess.js, juegos de piezas libres, tipografías abiertas (Asap, Piazzolla, Chivo Mono) y la base de problemas de Lichess. La lista completa, con autores y licencias, está en [THIRD-PARTY.md](THIRD-PARTY.md). No está afiliada a Lichess, Chess.com ni al proyecto Stockfish.

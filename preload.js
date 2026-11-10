@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webFrame } = require("electron");
 
 const lineListeners = new Set();
 const exitListeners = new Set();
@@ -15,9 +15,12 @@ contextBridge.exposeInMainWorld("api", {
   storeGet: (k) => ipcRenderer.invoke("store:get", k),
   storeSet: (k, v) => ipcRenderer.invoke("store:set", k, v),
   storePath: () => ipcRenderer.invoke("store:path"),
-  importGames: (source, user, max) => ipcRenderer.invoke("import:games", source, user, max),
+  importGames: (source, user, max, since) => ipcRenderer.invoke("import:games", source, user, max, since),
   aiAsk: (opts) => ipcRenderer.invoke("ai:ask", opts),
   openExternal: (url) => ipcRenderer.invoke("shell:open", url),
+  supportReport: (extra) => ipcRenderer.invoke("support:report", extra),
+  notify: (title, body) => ipcRenderer.send("notify", title, body),
+  setZoom: (f) => { try { webFrame.setZoomFactor(Math.max(0.8, Math.min(1.4, Number(f) || 1))); } catch (e) {} },
   log: (...a) => ipcRenderer.send("log", ...a),
   installUpdate: () => ipcRenderer.invoke("update:install"),
   checkUpdate: () => ipcRenderer.invoke("update:check"),

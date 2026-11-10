@@ -114,6 +114,25 @@ function loadLoose(pgn) {
   throw last;
 }
 
+/** Material insuficiente para dar mate (mismo criterio que chess.js): solo reyes, rey y una pieza menor, o alfiles todos del mismo color. */
+function insufficient(fen) {
+  const board = fen.split(" ")[0];
+  if (/[pPrRqQ]/.test(board)) return false;
+  let n = 0, knights = 0, bishops = 0, light = 0, sq = 0;
+  for (const ch of board) {
+    if (ch === "/") continue;
+    if (ch >= "1" && ch <= "8") { sq += +ch; continue; }
+    n++;
+    if (ch === "n" || ch === "N") knights++;
+    else if (ch === "b" || ch === "B") { bishops++; if (((sq >> 3) + (sq & 7)) % 2 === 0) light++; }
+    sq++;
+  }
+  if (n === 2) return true;
+  if (n === 3 && (bishops === 1 || knights === 1)) return true;
+  if (n === bishops + 2) return light === 0 || light === bishops;
+  return false;
+}
+
 export function parseGame(pgn) {
   let c;
   try { c = loadLoose(pgn); }
@@ -123,18 +142,38 @@ export function parseGame(pgn) {
   const headers = c.getHeaders ? c.getHeaders() : c.header();
   const comments = new Map();
   try { for (const x of c.getComments()) comments.set(x.fen, x.comment); } catch (e) {}
-  const r = headers.FEN ? new Chess(headers.FEN) : new Chess();
-  const fens = [r.fen()], checks = [r.inCheck()], term = [null], clocks = [];
-  const moves = [];
-  for (const m of hist) {
-    const mv = tryMove(r, { from: m.from, to: m.to, promotion: m.promotion });
-    if (!mv) break;
-    moves.push({ san: mv.san, from: mv.from, to: mv.to, color: mv.color, piece: mv.piece, captured: mv.captured || null, promotion: mv.promotion || null, uci: uciOf(mv), flags: mv.flags });
-    fens.push(r.fen()); checks.push(r.inCheck());
-    clocks.push(parseClk(comments.get(r.fen())));
-    term.push(r.isCheckmate() ? (r.turn() === "w" ? -1500 : 1500) : (r.isStalemate() || r.isInsufficientMaterial() || r.isThreefoldRepetition() || r.isDrawByFiftyMoves()) ? 0 : null);
-  }
+  // chess.js ya rehízo la partida al leerla: cada jugada trae la posición anterior y la siguiente. Volver a jugarla
+  // para sacar lo mismo costaba más del doble (unos 22 ms por partida contra 9).
+  const fens = [hist[0].before], checks = [new Chess(hist[0].before).inCheck()], term = [null], clocks = [];
+  const moves = [], seen = new Map();
+  const key = (fen) => fen.split(" ").slice(0, 4).join(" ");
+  seen.set(key(fens[0]), 1);
+  const last = hist.length - 1;
+  hist.forEach((m, i) => {
+    const fen = m.after, mate = m.san.endsWith("#");
+    moves.push({ san: m.san, from: m.from, to: m.to, color: m.color, piece: m.piece, captured: m.captured || null, promotion: m.promotion || null, uci: m.from + m.to + (m.promotion || ""), flags: m.flags });
+    fens.push(fen); checks.push(mate || m.san.endsWith("+"));
+    clocks.push(parseClk(comments.get(fen)));
+    const k = key(fen), n = (seen.get(k) || 0) + 1; seen.set(k, n);
+    // Ahogado solo puede ser la última posición (si no, la partida habría seguido sin jugadas legales).
+    const drawn = (i === last && !mate && c.isStalemate()) || insufficient(fen) || n >= 3 || +fen.split(" ")[4] >= 100;
+    term.push(mate ? (m.color === "w" ? 1500 : -1500) : drawn ? 0 : null);
+  });
   return { headers, fens, checks, term, moves, clocks, tc: parseTimeControl(headers.TimeControl) };
+}
+
+/** Las primeras jugadas de un PGN, sin leer la partida entera (alcanza para reconocer la apertura en las listas). */
+export function firstSans(pgn, n = 8) {
+  const body = String(pgn || "").replace(/\r/g, "").replace(/^\s*(\[[^\n]*\]\s*\n)+/, "");
+  const flat = stripVariations(body.replace(/\{[^}]*\}/g, " ").replace(/;[^\n]*/g, " "));
+  const out = [];
+  for (const tok of flat.split(/\s+/)) {
+    if (!tok || /^\d+\.*$/.test(tok) || /^\$\d+$/.test(tok) || /^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) continue;
+    const san = tok.replace(/^\d+\.+/, "").replace(/[!?]+$/, "");
+    if (!san) continue;
+    out.push(san); if (out.length >= n) break;
+  }
+  return out;
 }
 
 /* ---------- reloj ---------- */

@@ -1,6 +1,7 @@
 import { store, on, emit, gameOf, detectUserColor, saveTraining, engines, ensureEngines, findEntry, enqueueAnalysis, logActivity, libSignature } from "../state.js";
 import { isSolved as srsSolved, isDue, isMastered, recordResult, nextReviewText } from "../srs.js";
-import { diagnoseEntry, MOTIFS } from "../motifs.js";
+import { cachedDiag, MOTIFS } from "../motifs.js";
+import { gameSoon } from "../warm.js";
 import { Chess, tryMove, uciOf, pvToSan, numberedLine, moveLabel, wp, toCp, scoreFromInfo, evalText } from "../chess-util.js";
 import { CLS } from "../analysis.js";
 import { explainMove } from "../explain.js";
@@ -33,7 +34,7 @@ export function initLearn(h) {
   // Gancho de diagnóstico (solo lectura de estado y simular una jugada en el tablero).
   window.__mesaLearn = { move: (o, d) => onMove(o, d), state: () => ({ mode: L.mode, i: L.i, n: L.list.length, state: L.state, ex: L.ex && { id: L.ex.id, best: L.ex.best, played: L.ex.played, label: L.ex.label }, msg: L.msg && L.msg.text }) };
   on("analysed", () => { updateBadge(); });
-  on("library", updateBadge);
+  on("library", updateBadge); on("warm", () => { updateBadge(); if (!$("view-learn").hidden && L.mode !== "game" && !L.ex) render(); });
   updateBadge();
 }
 
@@ -63,7 +64,9 @@ function buildFor(entry, colorOverride, libraryWide = false) {
   const uc = colorOverride || detectUserColor(entry);
   // En las listas generales solo entran partidas donde sabemos con qué color jugaste, para no entrenar los errores del rival.
   if (!uc && !colorOverride && L.mode !== "game") return out;
-  let g; try { g = gameOf(entry); } catch (e) { return out; }
+  // Para las listas de toda la biblioteca, las partidas se leen en segundo plano (warm.js); una sola partida se lee en el momento.
+  let g; try { g = libraryWide ? gameSoon(entry) : gameOf(entry); } catch (e) { return out; }
+  if (!g) return out;
   const a = entry.analysis;
   const want = store.settings.learnInacc ? ["inacc", "mistake", "blunder"] : ["mistake", "blunder"];
   a.info.forEach((x, k) => {
@@ -84,7 +87,7 @@ function isSolved(id) { return srsSolved(store.training[id]); }
 function motifOf(ex) {
   const e = findEntry(ex.entryId); if (!e) return null;
   const uc = detectUserColor(e); if (!uc) return null;
-  let d = null; try { d = diagnoseEntry(e, gameOf(e), uc); } catch (err) { return null; }
+  const d = cachedDiag(e, uc);
   const it = d && d.items.find((x) => x.k === ex.k);
   return it ? it.motif : null;
 }

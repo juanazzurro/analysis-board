@@ -11,7 +11,7 @@
   <aside class="side">
     <div class="side-drag"></div>
     <div class="brand">
-      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#141922"/><rect x="5" y="5" width="11" height="11" rx="2" fill="#e4e9f0"/><rect x="16" y="5" width="11" height="11" rx="2" fill="#7e93b8"/><rect x="5" y="16" width="11" height="11" rx="2" fill="#7e93b8"/><rect x="16" y="16" width="11" height="11" rx="2" fill="#e4e9f0"/><path d="M10 22 L21 11" stroke="#2f5bff" stroke-width="3" stroke-linecap="round"/><path d="M15.5 10 H22 V16.5" fill="none" stroke="#2f5bff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg class="brand-mark" viewBox="100 100 824 824" aria-hidden="true"><defs><clipPath id="brandClip"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath></defs><g clip-path="url(#brandClip)"><g transform="translate(100 100)"><rect x="0" y="0" width="206" height="206" fill="#e4e9f0"/><rect x="206" y="0" width="206" height="206" fill="#7e93b8"/><rect x="412" y="0" width="206" height="206" fill="#e4e9f0"/><rect x="618" y="0" width="206" height="206" fill="#7e93b8"/><rect x="0" y="206" width="206" height="206" fill="#7e93b8"/><rect x="206" y="206" width="206" height="206" fill="#e4e9f0"/><rect x="412" y="206" width="206" height="206" fill="#7e93b8"/><rect x="618" y="206" width="206" height="206" fill="#e4e9f0"/><rect x="0" y="412" width="206" height="206" fill="#e4e9f0"/><rect x="206" y="412" width="206" height="206" fill="#7e93b8"/><rect x="412" y="412" width="206" height="206" fill="#e4e9f0"/><rect x="618" y="412" width="206" height="206" fill="#7e93b8"/><rect x="0" y="618" width="206" height="206" fill="#7e93b8"/><rect x="206" y="618" width="206" height="206" fill="#e4e9f0"/><rect x="412" y="618" width="206" height="206" fill="#7e93b8"/><rect x="618" y="618" width="206" height="206" fill="#e4e9f0"/></g><g opacity=".92"><path d="M318 706 L640 384" stroke="#2346d2" stroke-width="58" stroke-linecap="round"/><path d="M548 330 H694 V476" fill="none" stroke="#2346d2" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/></g></g><g transform="translate(232 250) scale(12.4)"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" fill="#fff"/><path d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3" fill="#fff"/><path d="M9.5 25.5a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0zm5.433-9.75a.5 1.5 30 1 1-.866-.5.5 1.5 30 1 1 .866.5z" fill="#000"/></g></g></svg>
       <div class="brand-text"><b>Analysis Board</b><span id="engineName">Stockfish 18</span></div>
     </div>
     <nav class="nav" aria-label="Secciones" data-en-aria="Sections">
@@ -125,8 +125,9 @@
         </div>
         <label class="field grow"><span data-en="Username">Usuario</span><input id="impUser" type="text" autocomplete="off" spellcheck="false" placeholder="tu usuario" data-en-placeholder="your username"></label>
         <label class="field"><span data-en="How many">Cantidad</span>
-          <select id="impCount"><option>10</option><option selected>25</option><option>50</option><option>100</option><option>200</option></select></label>
+          <select id="impCount"><option>10</option><option selected>25</option><option>50</option><option>100</option><option>200</option><option>500</option><option>1000</option></select></label>
         <button class="btn primary" id="impBtn" type="button" data-en="Import">Importar</button>
+        <button class="btn" id="syncBtn" type="button" hidden data-en="Get new games" title="Trae lo que jugaste desde la última partida importada" data-en-title="Brings in what you played since the last imported game">Traer nuevas</button>
       </div>
       <div class="lib-tools" id="libTools">
         <input id="libSearch" type="search" placeholder="Buscar rival o apertura" data-en-placeholder="Search opponent or opening" aria-label="Buscar partidas" data-en-aria="Search games">
@@ -156,6 +157,7 @@
             <button class="ibtn" id="anNext" type="button" title="Siguiente (→)" data-en-title="Next (→)" aria-label="Jugada siguiente" data-en-aria="Next move"><svg viewBox="0 0 24 24"><path d="M8 5l9 7-9 7z"/></svg></button>
             <button class="ibtn" id="anLast" type="button" title="Final (Fin)" data-en-title="End (End)" aria-label="Final" data-en-aria="End"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 5l9 7-9 7z"/></svg></button>
           </div>
+          <input id="anType" class="type-move" type="text" autocomplete="off" spellcheck="false" maxlength="8" placeholder="Jugada" data-en-placeholder="Move" title="Escribí una jugada y apretá Enter (por ejemplo Cf3, e4, O-O). Atajo: M" data-en-title="Type a move and press Enter (for example Nf3, e4, O-O). Shortcut: M" aria-label="Escribir una jugada" data-en-aria="Type a move">
           <div class="navset">
             <button class="btn small" id="anPlayBest" type="button" title="Juega en el tablero la jugada que recomienda el motor (barra espaciadora)" data-en-title="Plays the engine's recommended move on the board (space bar)"><span data-en="Play engine move">Jugar la del motor</span> <kbd>␣</kbd></button>
             <button class="ibtn" id="anFlip" type="button" title="Girar tablero (F)" data-en-title="Flip board (F)" aria-label="Girar tablero" data-en-aria="Flip board"><svg viewBox="0 0 24 24"><path d="M7 4v13M4 14l3 3 3-3M17 20V7M20 10l-3-3-3 3"/></svg></button>
@@ -280,6 +282,7 @@
           <p class="muted small" data-en="Used to import your games and to know which color you played in each one.">Sirven para importar y para saber con qué color jugaste en cada partida.</p>
           <label class="field"><span>Lichess</span><input id="stLichess" type="text" spellcheck="false" autocomplete="off"></label>
           <label class="field"><span>Chess.com</span><input id="stChesscom" type="text" spellcheck="false" autocomplete="off"></label>
+          <label class="check"><input type="checkbox" id="stAutoImport"> <span data-en="Bring in my new games when the app opens">Traer mis partidas nuevas al abrir la app</span></label>
         </div>
         <div class="card">
           <h3 data-en="Appearance">Apariencia</h3>
@@ -289,6 +292,8 @@
           <div class="field"><span data-en="Pieces">Piezas</span><div class="swatches" id="stPieces"></div></div>
           <label class="field"><span data-en="Move notation">Notación de las jugadas</span>
             <select id="stNotation"><option value="fig" data-en="Figurines (♘f3)">Figurines (♘f3)</option><option value="es" data-en="Spanish letters (Cf3)">Letras en castellano (Cf3)</option><option value="en" data-en="English letters (Nf3)">Letras en inglés (Nf3)</option></select></label>
+          <label class="field"><span data-en="Text size">Tamaño del texto</span>
+            <select id="stTextSize"><option value="90" data-en="Small">Chico</option><option value="100" data-en="Normal">Normal</option><option value="110" data-en="Large">Grande</option><option value="120" data-en="Larger">Más grande</option></select></label>
           <label class="field"><span data-en="Language">Idioma</span>
             <select id="stLang"><option value="es">Español</option><option value="en">English</option></select></label>
           <label class="check"><input type="checkbox" id="stSound"> <span data-en="Move sounds">Sonido al mover</span></label>
@@ -333,9 +338,13 @@
           <p class="small muted" data-en="The app also keeps an automatic copy of the previous day, in case something goes wrong.">Además la app guarda sola una copia del día anterior, por si algo sale mal.</p>
         </div>
         <div class="card">
+          <h3 data-en="Help">Ayuda</h3>
+          <p class="small muted" data-en="If something fails, export the log and attach it when you report the problem. It contains the app version, your system and the latest technical messages; it has no games, usernames or keys.">Si algo falla, exportá el registro y adjuntalo al reportar el problema. Tiene la versión de la app, tu sistema y los últimos mensajes técnicos; no incluye partidas, usuarios ni claves.</p>
+          <div class="btn-row"><button class="btn small" id="stLog" type="button" data-en="Export log…">Exportar registro…</button><button class="btn small" id="stReport" type="button" data-en="Report a problem">Reportar un problema</button><button class="btn small" id="stShortcuts" type="button" data-en="Keyboard shortcuts">Atajos de teclado</button><span class="small muted" id="stHelpMsg"></span></div>
+        </div>
+        <div class="card">
           <h3 data-en="Credits">Créditos</h3>
-          <p class="small muted" data-en="Engine: Stockfish 18 (GPL-3.0). Board: Lichess chessground (GPL-3.0). Pieces: cburnett by Colin M. L. Burnett and Merida by Armando Hernández Marroquín (GPL-2.0+), MPChess by Maxime Chupin (GPL-3.0+), Chessnut by Alexis Luengas (Apache-2.0). Rules: chess.js (BSD-2). Puzzles: Lichess database (CC0). Typefaces: Source Serif 4, IBM Plex Sans and Noto Sans Symbols 2 (SIL OFL 1.1).">Motor: Stockfish 18 (GPL-3.0). Tablero: chessground de Lichess (GPL-3.0). Piezas: cburnett de Colin M. L. Burnett y Merida de Armando Hernández Marroquín (GPL-2.0+), MPChess de Maxime Chupin (GPL-3.0+), Chessnut de Alexis Luengas (Apache-2.0). Reglas: chess.js (BSD-2). Problemas: base de Lichess (CC0). Tipografías: Source Serif 4, IBM Plex Sans y Noto Sans Symbols 2 (SIL OFL 1.1).</p>
-          <div class="btn-row"><button class="btn small" id="stShortcuts" type="button" data-en="Keyboard shortcuts">Atajos de teclado</button></div>
+          <p class="small muted" data-en="Engine: Stockfish 18 (GPL-3.0). Board: Lichess chessground (GPL-3.0). Pieces: cburnett by Colin M. L. Burnett and Merida by Armando Hernández Marroquín (GPL-2.0+), MPChess by Maxime Chupin (GPL-3.0+), Chessnut by Alexis Luengas (Apache-2.0). Rules: chess.js (BSD-2). Puzzles: Lichess database (CC0). Typefaces: Asap and Chivo Mono by Omnibus-Type, Piazzolla by Huerta Tipográfica, and Noto Sans Symbols 2 (SIL OFL 1.1).">Motor: Stockfish 18 (GPL-3.0). Tablero: chessground de Lichess (GPL-3.0). Piezas: cburnett de Colin M. L. Burnett y Merida de Armando Hernández Marroquín (GPL-2.0+), MPChess de Maxime Chupin (GPL-3.0+), Chessnut de Alexis Luengas (Apache-2.0). Reglas: chess.js (BSD-2). Problemas: base de Lichess (CC0). Tipografías: Asap y Chivo Mono de Omnibus-Type, Piazzolla de Huerta Tipográfica, y Noto Sans Symbols 2 (SIL OFL 1.1).</p>
         </div>
       </div>
     </section>
@@ -364,7 +373,7 @@
 </div>
 <div class="modal" id="newsModal" hidden>
   <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="newsTitle">
-    <h2 id="newsTitle" data-en="What's new in version 2">Novedades de la versión 2</h2>
+    <h2 id="newsTitle" data-en="What's new in version 2.1">Novedades de la versión 2.1</h2>
     <ul class="news" id="newsBody"></ul>
     <div class="btn-row end"><button class="btn primary" id="newsClose" type="button" data-en="Got it">Entendido</button></div>
   </div>
@@ -377,6 +386,7 @@
   </div>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
+<div class="sr-only" id="srLive" aria-live="polite"></div>
 <script src="app.js"></script>
 </body>
 </html>

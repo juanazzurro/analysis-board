@@ -3,8 +3,14 @@ export const $ = (id) => document.getElementById(id);
 export function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 let toastTimer = null;
-export function toast(msg, ms = 2800) {
+/** Aviso breve abajo. `action` = { label, run } agrega un botón (por ejemplo, "Deshacer"). */
+export function toast(msg, ms = 2800, action = null) {
   const t = $("toast"); t.textContent = msg; t.hidden = false;
+  if (action) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "toast-act"; b.textContent = action.label;
+    b.onclick = () => { t.hidden = true; clearTimeout(toastTimer); action.run(); };
+    t.appendChild(b);
+  }
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, ms);
 }
 

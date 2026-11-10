@@ -155,16 +155,29 @@ export function classifyError(game, an, k) {
   return { ...base, motif: "posicional", detail: "" };
 }
 
-/** Diagnóstico de una partida (cacheado en la entrada). */
-export function diagnoseEntry(entry, game, userColor) {
-  if (!entry.analysis || !userColor) return null;
-  if (entry.diag && entry.diag.v === DIAG_VERSION && entry.diag.at === entry.analysis.at && entry.diag.color === userColor && (entry.diag.lang || "es") === LANG) return entry.diag;
-  const an = entry.analysis; const items = [];
+/** Los errores propios de una partida, clasificados. Función pura: también la usa el hilo de trabajo (diag-worker.js). */
+export function computeDiag(game, an, userColor) {
+  const items = [];
   an.info.forEach((x, k) => {
-    if (!x || game.moves[k].color !== userColor) return;
+    if (!x || !game.moves[k] || game.moves[k].color !== userColor) return;
     if (!["mistake", "blunder"].includes(x.c)) return;
     try { const r = classifyError(game, an, k); if (r) items.push(r); } catch (e) { /* posición rara: se ignora */ }
   });
-  entry.diag = { v: DIAG_VERSION, at: an.at, color: userColor, lang: LANG, items };
-  return entry.diag;
+  return { v: DIAG_VERSION, at: an.at, color: userColor, items };
+}
+const valid = (d, entry, uc) => !!d && d.v === DIAG_VERSION && d.at === entry.analysis.at && d.color === uc;
+/** El diagnóstico guardado de una partida, o null si falta o quedó viejo. Se guarda uno por idioma (los detalles son texto),
+ *  así cambiar de idioma no obliga a recalcular todo. */
+export function cachedDiag(entry, userColor) {
+  if (!entry.analysis || !userColor) return null;
+  // Formato anterior a 2.1: un solo diagnóstico, con su idioma adentro.
+  if (entry.diag) { const d = entry.diag; delete entry.diag; if (d && d.items) { entry.diags = entry.diags || {}; if (!entry.diags[d.lang || "es"]) entry.diags[d.lang || "es"] = d; } }
+  const d = entry.diags && entry.diags[LANG];
+  return valid(d, entry, userColor) ? d : null;
+}
+export function storeDiag(entry, d) { (entry.diags = entry.diags || {})[LANG] = d; return d; }
+/** Diagnóstico de una partida (guardado en la entrada). Si falta, lo calcula en el momento. */
+export function diagnoseEntry(entry, game, userColor) {
+  if (!entry.analysis || !userColor) return null;
+  return cachedDiag(entry, userColor) || storeDiag(entry, computeDiag(game, entry.analysis, userColor));
 }

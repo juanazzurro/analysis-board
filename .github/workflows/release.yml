@@ -1,0 +1,33 @@
+# Al publicar una versión en GitHub, arma la app en una Mac, la prueba y adjunta el .zip a esa versión.
+# Así "Buscar actualizaciones" encuentra el archivo sin que nadie lo suba a mano.
+name: Release
+on:
+  release:
+    types: [published]
+permissions:
+  contents: write
+jobs:
+  mac:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.event.release.tag_name }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test
+      - name: Check that the tag matches the app version
+        run: |
+          V="$(node -p "require('./package.json').version")"
+          [ "v$V" = "${{ github.event.release.tag_name }}" ] || { echo "La etiqueta ${{ github.event.release.tag_name }} no coincide con la versión $V"; exit 1; }
+      - run: npm run package:mac
+      - run: bash scripts/test-mac.sh
+      - name: Attach the app to the release
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          V="$(node -p "require('./package.json').version")"
+          cp "dist/Analysis-Board-$V-mac.zip" dist/Analysis-Board-mac.zip
+          gh release upload "${{ github.event.release.tag_name }}" dist/Analysis-Board-mac.zip --clobber
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: mac-test, path: "test/ui/out-mac", retention-days: 30 }

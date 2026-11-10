@@ -9,3 +9,6 @@ renderer/assets/
 # Pruebas compiladas
 test/*.cjs
 .DS_Store
+test/ui/out/
+test/ui/out-mac/
+renderer/lib-worker.js

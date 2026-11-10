@@ -1,8 +1,9 @@
 import { familyLabel, openingFamilyEs } from "../openings.js";
 import { tr } from "../i18n.js";
-import { store, on, addGames, enqueueAnalysis, progress, detectUserColor, removeEntry, saveSettings, findEntry, gameOf } from "../state.js";
+import { store, on, addGames, enqueueAnalysis, progress, detectUserColor, saveSettings, findEntry } from "../state.js";
+import { firstSans, parseTimeControl } from "../chess-util.js";
 import { speedOf, scoreFor } from "../insights.js";
-import { importPgnText, importSummary } from "../data.js";
+import { importPgnText, importSummary, removeGame } from "../data.js";
 import { $, esc, toast, fmtDate, segBind, segValue, segSet, closeModals, openModal, cleanErr } from "../ui.js";
 
 let source = "lichess";
@@ -22,6 +23,7 @@ export function initLibrary(h) {
   $("libSearch").addEventListener("input", refilter);
   for (const id of ["libRes", "libSpeed", "libSort"]) $(id).addEventListener("change", refilter);
   $("libMoreBtn").onclick = () => { limit += 300; render(); };
+  $("syncBtn").onclick = async () => { const b = $("syncBtn"); b.disabled = true; try { await syncNewGames({ silent: false }); } finally { b.disabled = false; } };
   $("analyseAllBtn").onclick = () => {
     const pend = store.library.filter((g) => !g.analysis);
     if (!pend.length) { toast(tr("No hay partidas pendientes de análisis.", "No games waiting to be analyzed.")); return; }
@@ -32,6 +34,7 @@ export function initLibrary(h) {
   $("newBoardBtn").onclick = () => hooks.newBoard();
   $("openPgnBtn").onclick = () => hooks.openPgnFiles();
   $("libList").addEventListener("click", (e) => {
+    if (e.target.closest('[data-act="sample"]')) { const r = importPgnText(SAMPLE_PGN); if (r && r.entries.length) hooks.onOpen(r.entries[0].id); return; }
     const del = e.target.closest(".del");
     if (del) { e.stopPropagation(); askDelete(del.dataset.id, del); return; }
     const row = e.target.closest(".lib-row"); if (row) hooks.onOpen(row.dataset.id);
@@ -40,6 +43,41 @@ export function initLibrary(h) {
   initPaste();
   on("library", render); on("progress", renderProgressOnly); on("queue", render);
   render();
+}
+
+/* Partida de ejemplo para quien abre la app sin partidas propias (dominio público). */
+const SAMPLE_PGN = `[Event "Paris"]
+[Site "Paris FRA"]
+[Date "1858.??.??"]
+[White "Paul Morphy"]
+[Black "Duke Karl / Count Isouard"]
+[Result "1-0"]
+[Opening "Philidor Defense"]
+
+1. e4 e5 2. Nf3 d6 3. d4 Bg4 4. dxe5 Bxf3 5. Qxf3 dxe5 6. Bc4 Nf6 7. Qb3 Qe7 8. Nc3 c6 9. Bg5 b5 10. Nxb5 cxb5 11. Bxb5+ Nbd7 12. O-O-O Rd8 13. Rxd7 Rxd7 14. Rd1 Qe6 15. Bxd7+ Nxd7 16. Qb8+ Nxb8 17. Rd8# 1-0`;
+
+/** Trae las partidas jugadas después de la última que ya tenés, de cada sitio donde hayas importado alguna vez. */
+let syncing = false;
+export async function syncNewGames({ silent = true } = {}) {
+  if (syncing) return 0; syncing = true;
+  let added = 0, failed = null;
+  try {
+    for (const [src, user] of [["lichess", store.settings.lichessUser], ["chesscom", store.settings.chesscomUser]]) {
+      if (!user) continue;
+      const mine = store.library.filter((g) => g.source === src);
+      if (!mine.length) continue;                       // nunca importaste de ahí: no se trae nada por su cuenta
+      const since = Math.max(...mine.map((g) => g.date || 0));
+      try {
+        const list = await window.api.importGames(src, user, 200, since);
+        added += addGames(list);
+        (addGames.lastIds || []).map(findEntry).filter(Boolean).sort((a, b) => (b.date || 0) - (a.date || 0)).forEach((e) => enqueueAnalysis(e.id));
+      } catch (e) { failed = e; }
+    }
+  } finally { syncing = false; }
+  store.settings.lastSync = Date.now(); saveSettings();
+  if (added) toast(tr(`${added === 1 ? "Llegó 1 partida nueva" : `Llegaron ${added} partidas nuevas`}. Se ${added === 1 ? "analiza sola" : "analizan solas"}.`, `${added} new ${added === 1 ? "game" : "games"} came in. ${added === 1 ? "It" : "They"} will be analyzed automatically.`), 5000);
+  else if (!silent) toast(failed ? cleanErr(failed) : tr("No hay partidas nuevas.", "No new games."), 4000);
+  return added;
 }
 
 async function doImport() {
@@ -76,7 +114,7 @@ function openingLabel(g) {
   if (!name) { const m = /\[ECOUrl "[^"]*\/openings\/([^"]+)"\]/.exec(g.pgn || ""); if (m) name = decodeURIComponent(m[1]).split("-").filter((w) => w && !/^\d/.test(w)).join(" "); }
   lab = name ? familyLabel(name) || name.split(":")[0] : "";
   // Sin nombre en el PGN: se reconoce por las primeras jugadas.
-  if (!lab || lab === OTHER) { try { const fam = openingFamilyEs(name || "", gameOf(g).moves.slice(0, 8).map((m) => m.san)); if (fam && fam !== OTHER) lab = fam; else if (lab === OTHER) lab = name ? name.split(":")[0] : ""; } catch (e) {} }
+  if (!lab || lab === OTHER) { try { const fam = openingFamilyEs(name || "", firstSans(g.pgn, 8)); if (fam && fam !== OTHER) lab = fam; else if (lab === OTHER) lab = name ? name.split(":")[0] : ""; } catch (e) {} }
   opCache.set(g, lab);
   return lab;
 }
@@ -87,7 +125,7 @@ const SOURCE = { lichess: "Lichess", chesscom: "Chess.com", play: tr("contra Sto
 const speedCache = new WeakMap();
 function speedKey(g) {
   let s = speedCache.get(g);
-  if (s === undefined) { let game = null; if (!g.speed) { try { game = gameOf(g); } catch (e) {} } s = speedOf(g, game); speedCache.set(g, s); }
+  if (s === undefined) { let game = null; if (!g.speed) { const m = /\[TimeControl "([^"]+)"\]/.exec(g.pgn || ""); game = { tc: m ? parseTimeControl(m[1]) : null }; } s = speedOf(g, game); speedCache.set(g, s); }
   return s;
 }
 
@@ -117,12 +155,14 @@ function fillSpeeds() {
 
 function render() {
   const empty = !store.library.length;
+  $("syncBtn").hidden = !store.library.some((g) => g.source === "lichess" || g.source === "chesscom");
   $("libTools").hidden = empty; $("analyseAllBtn").hidden = empty;
   if (empty) {
     $("libMore").hidden = true;
     $("libList").innerHTML = `<div class="lib-empty"><b>${tr("Empezá por traer tus partidas", "Start by bringing in your games")}</b>${tr(
       "Escribí arriba tu usuario de Lichess o Chess.com y tocá Importar. También podés abrir un archivo PGN, arrastrarlo a esta ventana o pegar una partida. Cada una se analiza sola y después vas a ver tu diagnóstico y tu plan de entrenamiento.",
-      "Enter your Lichess or Chess.com username above and click Import. You can also open a PGN file, drag it onto this window or paste a game. Each one is analyzed automatically, and then you'll see your diagnosis and training plan.")}</div>`;
+      "Enter your Lichess or Chess.com username above and click Import. You can also open a PGN file, drag it onto this window or paste a game. Each one is analyzed automatically, and then you'll see your diagnosis and training plan.")}
+      <span class="lib-empty-try"><button class="btn" type="button" data-act="sample">${tr("Probar con una partida de ejemplo", "Try it with a sample game")}</button><span class="small muted">${tr("Morphy contra el duque de Brunswick y el conde Isouard, París 1858.", "Morphy against the Duke of Brunswick and Count Isouard, Paris 1858.")}</span></span></div>`;
     return;
   }
   fillSpeeds();
@@ -167,7 +207,7 @@ function renderProgressOnly() {
 
 let pendingDelete = null;
 function askDelete(id, btn) {
-  if (pendingDelete === id) { removeEntry(id); pendingDelete = null; toast(tr("Partida quitada.", "Game removed.")); return; }
+  if (pendingDelete === id) { pendingDelete = null; removeGame(id); return; }
   pendingDelete = id; btn.textContent = tr("¿Quitar?", "Remove?"); btn.style.opacity = 1; btn.style.width = "auto";
   setTimeout(() => { if (pendingDelete === id) { pendingDelete = null; render(); } }, 2500);
 }

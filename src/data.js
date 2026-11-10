@@ -1,9 +1,15 @@
 // Tus datos: importar PGN (archivo, pegado o arrastrado), exportar partidas y copias de seguridad.
-import { store, addGames, enqueueAnalysis, entryFromPgn, saveLibrary, gameOf, flushSaves } from "./state.js";
+import { store, addGames, enqueueAnalysis, entryFromPgn, saveLibrary, gameOf, flushSaves, removeEntry, restoreEntry } from "./state.js";
 import { splitPgn } from "./chess-util.js";
-import { buildTree, toPgn } from "./tree.js";
+import { buildTree, toPgn, analysisAnnotations } from "./tree.js";
 import { tr } from "./i18n.js";
 import { toast, cleanErr } from "./ui.js";
+
+/** Quita una partida de la lista y deja unos segundos para arrepentirse. */
+export function removeGame(id) {
+  const undo = removeEntry(id); if (!undo) return;
+  toast(tr("Partida quitada.", "Game removed."), 8000, { label: tr("Deshacer", "Undo"), run: () => { restoreEntry(undo); toast(tr("Partida recuperada.", "Game restored.")); } });
+}
 
 /**
  * Agrega a la biblioteca las partidas de un texto PGN. Devuelve { entries, added, dup, bad } o null si no había nada legible.
@@ -32,7 +38,7 @@ export function importSummary(r) {
 export function entryPgn(e) {
   const g = gameOf(e);
   const headers = { ...g.headers, White: g.headers.White || e.white, Black: g.headers.Black || e.black, Result: g.headers.Result || (e.result === "½-½" ? "1/2-1/2" : e.result) || "*" };
-  return toPgn(headers, buildTree(g, e.vars));
+  return toPgn(headers, buildTree(g, e.vars, e.notes), analysisAnnotations(e.analysis));
 }
 const stamp = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 

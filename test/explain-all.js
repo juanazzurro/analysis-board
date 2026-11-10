@@ -16,7 +16,8 @@ for (const e of lib) {
       if (r && !samples.has(r.headline) ) samples.set(r.headline, `${g.moves[k].san}: ${r.paragraphs.join(" ")}${r.tip ? " | TIP " + r.tip : ""}`);
     } catch (err) { errors++; if (errors < 4) console.log("ERR", e.id, k, err.stack.split("\n").slice(0, 3).join(" | ")); }
   }
-  if (uc) { delete e.diag; const d = diagnoseEntry(e, g, uc); for (const it of d.items) if (!MOTIFS[it.motif]) { errors++; console.log("motivo raro", it.motif); } }
+  if (uc) { delete e.diag; delete e.diags; const d = diagnoseEntry(e, g, uc); for (const it of d.items) if (!MOTIFS[it.motif]) { errors++; console.log("motivo raro", it.motif); } }
 }
-console.log("explicaciones", n, "errores", errors);
 for (const [h, t] of samples) console.log("•", h, "—", t.slice(0, 260));
+console.log("explicaciones", n, "errores", errors);
+if (errors || !n) process.exitCode = 1;

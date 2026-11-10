@@ -1,4 +1,5 @@
 import { store, loadAll, startEngines, on, progress, queueLength, cancelQueue, findEntry, engineProblem, saveTraining, saveSettings, flushSaves } from "./state.js";
+import { warmAll, warmSettled } from "./warm.js";
 import { migrate } from "./srs.js";
 import { invalidateInsights } from "./insights.js";
 import { redrawAll } from "./board.js";
@@ -9,7 +10,7 @@ import { setNotation, observeNotation } from "./notation.js";
 import { applyAppearance } from "./appearance.js";
 import { initUpdates, upd, checkUpdates, installUpdate, fmtMB } from "./updates.js";
 import { importPgnText, importSummary, exportAllGames, saveBackup, restoreBackup } from "./data.js";
-import { initLibrary, openPaste } from "./views/library.js";
+import { initLibrary, openPaste, syncNewGames } from "./views/library.js";
 import { initAnalysis, openAnalysis, openReview, openFree, analysisKey, onShow as analysisShow, leaveAnalysis, copyFen, copyPgn, exportPgn, currentEntryId } from "./views/analysis.js";
 import { initLearn, showLearn, startLearnSession } from "./views/learn.js";
 import { initPlay, playFrom } from "./views/play.js";
@@ -117,6 +118,7 @@ function showHelp() {
     [tr("Barra espaciadora", "Space bar"), tr("Jugar en el tablero la jugada que recomienda el motor", "Play the engine's recommended move on the board")],
     ["F", tr("Girar el tablero", "Flip the board")],
     ["A", tr("Mostrar u ocultar las flechas del motor", "Show or hide the engine arrows")],
+    ["M", tr("Escribir una jugada (Cf3, e4, O-O) en vez de arrastrar la pieza", "Type a move (Nf3, e4, O-O) instead of dragging the piece")],
     ["⌫", tr("Borrar la variante en la que estás", "Delete the variation you are in")],
     ["Esc", tr("Volver de una variante a la partida", "Go back from a variation to the game")],
     ["⌘1 … ⌘9", tr("Cambiar de sección", "Switch section")],
@@ -132,19 +134,19 @@ function showHelp() {
 }
 
 /* ---------- novedades (una sola vez después de actualizar) ---------- */
-const NEWS_VERSION = "2.0";
+const NEWS_VERSION = "2.1";
 function maybeShowNews() {
   if (store.settings.seenVersion === NEWS_VERSION) return;
   const done = () => { store.settings.seenVersion = NEWS_VERSION; saveSettings(); };
   // A quien recién empieza no se le cuentan "novedades": todo es nuevo.
   if (!store.library.length || store.sys.test) { if (!store.sys.test) done(); return; }
   const items = [
-    [tr("Motor en vivo y variantes", "Live engine and variations"), tr("En cualquier partida podés mover las piezas, tuyas y de tu rival. El motor analiza cada posición con varias líneas: tocá una jugada para verla en el tablero o apretá la barra espaciadora para jugar la que recomienda. Las variantes quedan guardadas con la partida.", "In any game you can move the pieces, yours and your opponent's. The engine analyzes every position with several lines: click a move to see it on the board, or press the space bar to play the one it recommends. Variations are saved with the game.")],
-    [tr("Devolución de cada partida", "A report for every game"), tr("Cada partida analizada trae una devolución escrita: cómo se desarrolló, qué la decidió, cómo usaste el reloj y cómo se compara con tus otras partidas de la semana y del mes.", "Every analyzed game comes with a written report: how it unfolded, what decided it, how you used the clock, and how it compares with your other games of the week and month.")],
-    [tr("Informe semanal y mensual", "Weekly and monthly report"), tr("En Diagnóstico elegís el período y ves qué mejoró y qué empeoró respecto del anterior.", "In Diagnosis you choose the period and see what improved and what got worse compared with the previous one.")],
-    [tr("Tablero libre y archivos PGN", "Free board and PGN files"), tr("Analizá cualquier posición, cargá una partida a mano, abrí o arrastrá archivos PGN, exportá tus partidas y guardá una copia de seguridad de todo.", "Analyze any position, enter a game by hand, open or drag PGN files, export your games and save a backup of everything.")],
-    [tr("A tu gusto", "Your way"), tr("Notación con figurines o con letras en castellano, cuatro tableros y cuatro juegos de piezas, tema claro u oscuro. Todo en Ajustes.", "Figurine or letter notation, four boards and four piece sets, light or dark theme. All in Settings.")],
-    [tr("Actualizaciones con un clic", "One-click updates"), tr("Cuando salga una versión nueva, la app te avisa y se actualiza sola.", "When a new version comes out, the app tells you and updates itself.")]
+    [tr("Abre al instante", "Opens instantly"), tr("Con muchas partidas la app ya no se queda congelada al abrir: lo pesado se prepara de fondo mientras la usás.", "With many games the app no longer freezes on launch: the heavy work is prepared in the background while you use it.")],
+    [tr("Libro de aperturas", "Opening book"), tr("Cada partida muestra el nombre exacto de la apertura y su código ECO, las jugadas de libro quedan marcadas y la devolución te dice dónde saliste de la teoría.", "Every game shows the exact opening name and its ECO code, book moves are marked, and the report tells you where you left theory.")],
+    [tr("Tus comentarios", "Your comments"), tr("Podés escribir una nota en cualquier jugada. Se guarda con la partida y sale en el PGN, junto con las evaluaciones del motor.", "You can write a note on any move. It is saved with the game and exported in the PGN, together with the engine evaluations.")],
+    [tr("Partidas nuevas, solas", "New games, automatically"), tr("Al abrir, la app trae lo que jugaste desde la última vez y lo analiza. Se apaga en Ajustes.", "When it opens, the app brings in what you played since last time and analyzes it. You can turn it off in Settings.")],
+    [tr("Detalles que faltaban", "Details that were missing"), tr("Deshacer al quitar una partida, escribir una jugada con el teclado (tecla M), copiar la devolución, cambiar el tamaño del texto y un aviso cuando termina de analizar.", "Undo when removing a game, type a move with the keyboard (M key), copy the report, change the text size, and a notification when analysis finishes.")],
+    [tr("Tipografías nuevas", "New typefaces"), tr("Asap para la interfaz y Piazzolla para los títulos, las dos de fundidoras argentinas, elegidas midiendo cómo se leen las jugadas y los números dentro de la app.", "Asap for the interface and Piazzolla for headings, both from Argentine foundries, chosen by measuring how moves and numbers read inside the app.")]
   ];
   $("newsBody").innerHTML = items.map(([t, d]) => `<li><b>${esc(t)}</b><span>${esc(d)}</span></li>`).join("");
   $("newsClose").onclick = closeModals;
@@ -196,10 +198,22 @@ function runCommand(c) {
   else if (c === "check-updates") { goView("settings"); checkUpdates(true); }
 }
 
+/* Errores de la interfaz que nadie atajó: van al registro (Ajustes → Ayuda → Exportar registro). */
+let errCount = 0;
+function reportError(kind, msg, where) {
+  if (++errCount > 40) return;       // un error repetido en cada cuadro no llena el registro
+  try { window.api.log(kind, String(msg).slice(0, 1500), where || ""); } catch (e) {}
+}
+window.addEventListener("error", (e) => reportError("[error]", (e.error && e.error.stack) || e.message, e.filename ? `${String(e.filename).split("/").pop()}:${e.lineno}` : ""));
+window.addEventListener("unhandledrejection", (e) => reportError("[promesa]", (e.reason && e.reason.stack) || e.reason));
+
 async function boot() {
   translateStatic();
   await loadAll();
+  // Las partidas se leen en hilos de trabajo. Con pocas, terminan antes de dibujar la primera pantalla.
+  warmAll(); await warmSettled(300);
   setNotation(store.settings.notation);
+  window.api.setZoom((store.settings.textSize || 100) / 100);
   applyAppearance();
   observeNotation(document.body);
   // Repaso espaciado: los ejercicios resueltos con la versión anterior arrancan su calendario mañana.
@@ -234,12 +248,20 @@ async function boot() {
   $("helpClose").onclick = closeModals;
 
   on("engines", () => renderFoot()); on("progress", () => renderFoot()); on("queue", () => renderFoot()); on("update", () => renderFoot());
-  on("analysed", () => invalidateInsights()); on("library", () => invalidateInsights());
+  on("analysed", () => invalidateInsights()); on("library", () => invalidateInsights()); on("warm", () => invalidateInsights());
   on("error", (msg) => { toast(msg, 7000); renderFoot(); });
+  on("batch", (n) => {
+    if (n < 2) return;
+    const msg = tr(`Terminé de analizar ${n} partidas. El diagnóstico ya las incluye.`, `Finished analyzing ${n} games. The diagnosis now includes them.`);
+    if (document.hasFocus()) toast(msg, 5000); else window.api.notify(tr("Análisis terminado", "Analysis finished"), msg);
+  });
   window.addEventListener("resize", () => { if (BOARD_VIEWS.has(current)) sizeBoards(); });
   window.addEventListener("beforeunload", flushSaves);
   window.api.onMenu(runCommand);
   window.api.onFileOpened((f) => importAndOpen(f.text));
+  // Al abrir: trae lo jugado desde la última partida importada (se puede apagar en Ajustes). En las pruebas automáticas no sale a la red.
+  window.__mesaSync = syncNewGames;
+  if (store.settings.autoImport !== false && !store.sys.test) setTimeout(() => { syncNewGames().catch(() => {}); }, 2500);
   const mac = store.sys.platform === "darwin";
   document.addEventListener("keydown", (e) => {
     if (anyModal()) { if (e.key === "Escape") closeModals(); return; }

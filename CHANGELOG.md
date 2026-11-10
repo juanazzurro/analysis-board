@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.1.0 (2026-11-10)
+
+Faster with big libraries, a real opening book, your own comments, and a new pair of typefaces.
+
+**Speed and reliability**
+- The app no longer freezes on launch with a large library. With 1,000 games the window used to hang for about 27 seconds; now it is usable in under 2 and the rest is prepared in the background (reading a game is also 2.4 times faster).
+- Changing the language no longer recalculates the whole diagnosis.
+- Errors nobody caught are written to a log instead of being lost; if the window crashes it reloads itself. Settings → Help can export that log (no games, usernames or keys in it) and open a problem report.
+- Updates are checked against the SHA-256 that GitHub publishes for the file; a download that doesn't match is not installed.
+- Your data files can only be read by your macOS user, and the API key is no longer copied into the automatic daily backups.
+
+**Chess**
+- Opening book with 3,865 named openings (the Lichess table): exact name and ECO code for every game, recognised by position, so transpositions count. Book moves are marked as such, and the report says where the game left known theory.
+- Your own comments on any move, in the game or in a variation. They are saved with the game and exported in the PGN.
+- Exported PGNs now carry the engine evaluation of every move and the usual symbols for inaccuracies, mistakes and blunders.
+- New games come in by themselves when the app opens (can be turned off), and there is a "Get new games" button. Import up to 1,000 games at once.
+- Type a move instead of dragging (press M: Nf3, e4, O-O).
+
+**Using it**
+- Removing a game can be undone.
+- A sample game to try the app without importing anything.
+- A system notification when a batch of games finishes analyzing and the window is in the background.
+- Copy the game report as text.
+- Text size setting; visible keyboard focus; the current move is announced to screen readers.
+
+**Design**
+- New typefaces, chosen by measuring 37 open families inside the app: Asap for the interface (its letters keep the same width in bold, so the move list doesn't shift when you step through a game) and Piazzolla for headings. Both come from Argentine foundries. The reasoning and the numbers are in docs/TYPOGRAPHY.md.
+- The logo in the sidebar is now the same drawing as the app icon.
+
+**Project**
+- The interface tests are in the repository and run on every push, on Linux and on an Apple Silicon Mac, where the packaged app is tested for real: launch, native engine, opening a .pgn from the Finder and installing an update.
+- Publishing a release builds the app on a Mac and attaches it automatically.
+
 ## 2.0.0 (2026-11-10)
 
 A major update: a new look, a complete analysis board and written reports.
@@ -55,6 +88,22 @@ A major update: a new look, a complete analysis board and written reports.
 ---
 
 ## Novedades (en español)
+
+### 2.1.0
+
+Más rápida con bibliotecas grandes, un libro de aperturas de verdad, comentarios propios y tipografías nuevas.
+
+- **Ya no se congela al abrir** con muchas partidas: con 1.000, la ventana quedaba trabada unos 27 segundos; ahora se puede usar en menos de 2 y el resto se prepara de fondo. Cambiar de idioma ya no recalcula el diagnóstico.
+- **Libro de aperturas** con 3.865 aperturas: nombre exacto y código ECO de cada partida (también por transposición), jugadas "de libro" marcadas, y la devolución dice dónde la partida salió de la teoría.
+- **Comentarios propios** en cualquier jugada, guardados con la partida. El PGN exportado ahora lleva tus comentarios, la evaluación del motor en cada jugada y los signos de imprecisión, error y blunder.
+- **Las partidas nuevas llegan solas** al abrir la app (se puede apagar), hay un botón "Traer nuevas" y se pueden importar hasta 1.000 de una vez.
+- **Escribir una jugada** en vez de arrastrar la pieza (tecla M: Cf3, e4, O-O).
+- **Deshacer** al quitar una partida, una **partida de ejemplo** para probar la app, **aviso del sistema** cuando termina de analizar una tanda, **copiar la devolución** como texto, **tamaño del texto** ajustable.
+- **Si algo falla**, queda en un registro que se exporta desde Ajustes → Ayuda (sin partidas, usuarios ni claves); si la ventana se cae, se recarga sola.
+- **Actualizaciones verificadas** con la huella SHA-256 que publica GitHub. Tus archivos de datos solo los puede leer tu usuario de la Mac.
+- **Tipografías nuevas**, elegidas midiendo 37 familias abiertas dentro de la app: Asap para la interfaz (sus letras no cambian de ancho en negrita, así la planilla no se mueve al recorrer la partida) y Piazzolla para los títulos, las dos de fundidoras argentinas. El porqué está en docs/TYPOGRAPHY.md.
+- **El logo** de la barra lateral ahora es el mismo dibujo que el ícono de la app.
+- Las pruebas de interfaz están en el repositorio y corren en cada cambio, también sobre una Mac, donde se prueba la app empaquetada: arranque, motor, abrir un .pgn desde el Finder e instalar una actualización.
 
 ### 2.0.0
 

@@ -13,8 +13,10 @@ Analysis Board is distributed under the GNU GPL v3 or later (see `LICENSE`). It 
 | Piece set "Merida" | Armando Hernández Marroquín | GPL-2.0-or-later |
 | Piece set "MPChess" | Maxime Chupin | GPL-3.0-or-later |
 | Piece set "Chessnut" | Alexis Luengas | Apache-2.0 (`src/assets/pieces/chessnut/LICENSE.txt`) |
-| Typeface [Source Serif 4](https://github.com/adobe-fonts/source-serif) | Adobe | SIL Open Font License 1.1 |
-| Typeface [IBM Plex Sans](https://github.com/IBM/plex) | IBM | SIL Open Font License 1.1 |
+| Typeface [Asap](https://github.com/Omnibus-Type/Asap) | Omnibus-Type (Pablo Cosgaya and team), Buenos Aires | SIL Open Font License 1.1 |
+| Typeface [Chivo Mono](https://github.com/Omnibus-Type/Chivo) | Omnibus-Type (Héctor Gatti and team), Buenos Aires | SIL Open Font License 1.1 |
+| Typeface [Piazzolla](https://github.com/huertatipografica/piazzolla) | Juan Pablo del Peral, Huerta Tipográfica | SIL Open Font License 1.1 |
+| Opening names and ECO codes from [lichess-org/chess-openings](https://github.com/lichess-org/chess-openings) (`data/eco/`) | Lichess contributors | CC0 1.0 (public domain) |
 | Chess figurines from [Noto Sans Symbols 2](https://github.com/notofonts/symbols) (`src/assets/fonts/chess-figurines.woff2`, a subset) | Google | SIL Open Font License 1.1 |
 | Puzzles from the [Lichess puzzle database](https://database.lichess.org/#puzzles) | Lichess | CC0 |
 

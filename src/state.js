@@ -9,7 +9,7 @@ export const DEFAULT_SETTINGS = {
   depth: "normal", threads: 0, hash: 256,
   sound: true, aiKey: "", aiModel: "claude-sonnet-5-5",
   learnInacc: false, importCount: 25, selfReview: true, dailyPuzzles: 10,
-  theme: "system", board: "steel", pieces: "cburnett", notation: "fig", liveEngine: true, liveLines: 3, autoUpdate: true
+  theme: "system", board: "steel", pieces: "cburnett", notation: "fig", liveEngine: true, liveLines: 3, autoUpdate: true, autoImport: true, textSize: 100
 };
 export const DEFAULT_PROGRESS = { days: {}, puzzles: { rating: 1000, n: 0, history: [], themes: {}, seen: [] }, endgames: {} };
 
@@ -93,6 +93,12 @@ export function gameOf(entry) {
   if (!g) { g = parseGame(entry.pgn); parsed.set(entry, g); }
   return g;
 }
+/** La partida ya leída, o null. Para recorrer toda la biblioteca sin leer nada en el momento (ver warm.js). */
+export function gameReady(entry) { return parsed.get(entry) || null; }
+export function setGame(entry, g) { parsed.set(entry, g); }
+let warmTick = 0;
+/** Cambia la firma de la biblioteca cuando termina trabajo de fondo, así las listas guardadas se rehacen. */
+export function bumpWarm() { warmTick++; }
 export function detectUserColor(entry) {
   if (entry.userColor === "none") return null;
   if (entry.userColor) return entry.userColor;
@@ -137,10 +143,21 @@ export function entryFromPgn(pgn, extra = {}) {
 export function libSignature() {
   let n = 0, a = 0;
   for (const e of store.library) { n++; if (e.analysis) a = (a + (e.analysis.at % 100003)) % 1e12; if (e.userColor) a += e.userColor.length * 7; }
-  return `${n}:${a}:${store.settings.lichessUser}:${store.settings.chesscomUser}:${store.settings.learnInacc ? 1 : 0}`;
+  return `${n}:${a}:${store.settings.lichessUser}:${store.settings.chesscomUser}:${store.settings.learnInacc ? 1 : 0}:${warmTick}`;
 }
 export function findEntry(id) { return store.library.find((g) => g.id === id) || null; }
-export function removeEntry(id) { store.library = store.library.filter((g) => g.id !== id); saveLibrary(); emit("library"); }
+/** Quita una partida. Devuelve lo necesario para deshacerlo con restoreEntry. */
+export function removeEntry(id) {
+  const index = store.library.findIndex((g) => g.id === id); if (index < 0) return null;
+  const [entry] = store.library.splice(index, 1);
+  saveLibrary(); emit("library");
+  return { entry, index };
+}
+export function restoreEntry(undo) {
+  if (!undo || findEntry(undo.entry.id)) return;
+  store.library.splice(Math.min(undo.index, store.library.length), 0, undo.entry);
+  saveLibrary(); emit("library");
+}
 
 /* ---------- cola de análisis ---------- */
 const queue = [];
@@ -169,6 +186,7 @@ export function reanalyse(id, depth) {
 async function pump() {
   if (running) return;
   running = true;
+  let batch = 0;
   while (queue.length) {
     const id = queue.shift();
     const e = findEntry(id); if (!e || e.analysis) continue;
@@ -191,7 +209,7 @@ async function pump() {
     if (res) {
       e.analysis = { ...res, stats: { w: stats(game, res.info, "w"), b: stats(game, res.info, "b") } };
       delete e._depth;
-      saveLibrary();
+      saveLibrary(); batch++;
     }
     Object.assign(progress, { id: null, i: 0, n: 0, evals: null, info: null });
     emit("analysed", id, !!res);
@@ -200,4 +218,5 @@ async function pump() {
   }
   running = false;
   emit("queue");
+  if (batch) emit("batch", batch);       // terminó una tanda de análisis
 }

@@ -8,7 +8,8 @@ function mk(parent, m, fen, main) {
 }
 
 /** Arma el árbol a partir de la partida y de las variantes guardadas (`vars`: { "ply": [[uci, [hijos]], …] }). */
-export function buildTree(game, vars) {
+/** `vars`: variantes guardadas. `notes`: tus comentarios de la línea principal, { jugada: texto }. */
+export function buildTree(game, vars, notes) {
   const root = mk(null, null, game.fens[0], 0);
   const byId = new Map([[root.id, root]]);
   const mainline = [root];
@@ -22,10 +23,11 @@ export function buildTree(game, vars) {
     for (const item of list || []) {
       if (!Array.isArray(item) || typeof item[0] !== "string") continue;
       const n = addMove(tree, parent, item[0]);
-      if (n) add(n, item[1]);
+      if (n) { if (typeof item[2] === "string" && item[2]) n.comment = item[2]; add(n, item[1]); }
     }
   };
   if (vars && typeof vars === "object") for (const [ply, list] of Object.entries(vars)) { const base = mainline[+ply]; if (base) add(base, list); }
+  if (notes && typeof notes === "object") for (const [ply, text] of Object.entries(notes)) { const n = mainline[+ply]; if (n && typeof text === "string" && text) n.comment = text; }
   return tree;
 }
 
@@ -70,12 +72,19 @@ export function clearVariations(tree) {
 
 /** Variantes en formato compacto para guardar con la partida. */
 export function serializeVars(tree) {
-  const ser = (n) => [n.uci, n.children.map(ser)];
+  const ser = (n) => (n.comment ? [n.uci, n.children.map(ser), n.comment] : [n.uci, n.children.map(ser)]);
   const out = {};
   tree.mainline.forEach((n, ply) => {
     const vs = n.children.filter((c) => c.main == null);
     if (vs.length) out[ply] = vs.map(ser);
   });
+  return Object.keys(out).length ? out : null;
+}
+
+/** Comentarios de la línea principal, para guardar con la partida: { jugada: texto } o null. */
+export function serializeNotes(tree) {
+  const out = {};
+  tree.mainline.forEach((n, ply) => { if (ply && n.comment) out[ply] = n.comment; });
   return Object.keys(out).length ? out : null;
 }
 
@@ -92,13 +101,16 @@ function plyOffset(n) { // posiciones que empiezan con negras o en una jugada qu
 /** Texto de jugadas en PGN desde `node` (sin incluirlo), con las variantes entre paréntesis. `main`: seguir solo la línea principal como principal. */
 export function movetext(node, opts = {}) {
   const out = [];
+  // Comentario de una jugada: lo que devuelva opts.comment (por ejemplo la evaluación) más lo que escribió el usuario.
+  const note = (n) => { const t = [opts.comment ? opts.comment(n) : "", n.comment || ""].filter(Boolean).join(" ").replace(/[{}]/g, "").replace(/\s+/g, " ").trim(); return t ? ` {${t}}` : ""; };
   const walk = (n, force) => {
     let cur = n, first = force;
     while (cur.children.length) {
       const [head, ...alts] = cur.children;
-      out.push(moveNo(head, first) + head.san + (opts.nag && opts.nag(head) ? " " + opts.nag(head) : ""));
-      first = false;
-      if (opts.vars !== false) for (const a of alts) { out.push("(" + moveNo(a, true) + a.san); walk(a, false); out[out.length - 1] += ")"; first = true; }
+      const cm = note(head);
+      out.push(moveNo(head, first) + head.san + (opts.nag && opts.nag(head) ? " " + opts.nag(head) : "") + cm);
+      first = !!cm;          // después de un comentario, el PGN repite el número de jugada
+      if (opts.vars !== false) for (const a of alts) { const ca = note(a); out.push("(" + moveNo(a, true) + a.san + ca); walk(a, !!ca); out[out.length - 1] += ")"; first = true; }
       cur = head;
     }
   };
@@ -114,4 +126,18 @@ export function toPgn(headers, tree, opts = {}) {
   const body = movetext(tree.root, opts);
   const res = h.Result && h.Result !== "?" ? h.Result : "*";
   return (head ? head + "\n\n" : "") + (body ? body + " " : "") + res + "\n";
+}
+
+/** Anotaciones del análisis para exportar: evaluación de cada jugada ([%eval]) y signo ($2 error, $4 blunder, $6 imprecisión). */
+export function analysisAnnotations(analysis) {
+  if (!analysis || !analysis.evals) return {};
+  const NAG = { mistake: "$2", blunder: "$4", inacc: "$6" };
+  return {
+    nag: (n) => (n.main != null && analysis.info && analysis.info[n.main - 1] ? NAG[analysis.info[n.main - 1].c] || "" : ""),
+    comment: (n) => {
+      const e = n.main != null ? analysis.evals[n.main] : null; if (!e) return "";
+      if (e.mate != null) return `[%eval #${e.mate}]`;
+      return e.cp != null ? `[%eval ${(e.cp / 100).toFixed(2)}]` : "";
+    },
+  };
 }

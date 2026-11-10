@@ -1,10 +1,12 @@
 import { tr, EN } from "../i18n.js";
-import { store, on, emit, findEntry, gameOf, progress, enqueueAnalysis, detectUserColor, saveLibrary, engines, ensureEngines, reanalyse, logActivity, entryFromPgn, addGames, removeEntry } from "../state.js";
+import { store, on, emit, findEntry, gameOf, progress, enqueueAnalysis, detectUserColor, saveLibrary, engines, ensureEngines, reanalyse, logActivity, entryFromPgn, addGames } from "../state.js";
+import { removeGame } from "../data.js";
+import { bookOf } from "../eco.js";
 import { Chess, tryMove, uciOf, pvToSan, moveLabel, wp, toCp, evalText, scoreFromInfo, START_FEN, openingName, VALUES } from "../chess-util.js";
 import { CLS, stats as calcStats } from "../analysis.js";
 import { explainMove, aiContext } from "../explain.js";
 import { makeBoard, syncBoard, arrow, pickPromotion } from "../board.js";
-import { buildTree, addMove, baseOf, branchRoot, lineEnd, pathTo, removeBranch, clearVariations, hasVariations, serializeVars, toPgn, movetext } from "../tree.js";
+import { buildTree, addMove, baseOf, branchRoot, lineEnd, pathTo, removeBranch, clearVariations, hasVariations, serializeVars, toPgn, movetext , serializeNotes, analysisAnnotations } from "../tree.js";
 import { gameReport, reportText, fmtClock } from "../report.js";
 import { familyLabel } from "../openings.js";
 import { MOTIFS } from "../motifs.js";
@@ -53,8 +55,10 @@ export function initAnalysis(h) {
     else if (a === "puzzles") hooks.startPuzzles({ theme: t.dataset.arg || undefined });
     else if (a === "endgames") hooks.goView("endgames");
     else if (a === "diagnosis") hooks.goView("diagnosis");
+    else if (a === "copy-report") { if (A.report) { window.api.copyText(reportText(A.report)); toast(tr("Devolución copiada.", "Report copied.")); } }
   });
   $("anMove").addEventListener("input", (e) => {
+    if (e.target.id === "anNote" && A.node) { const v = e.target.value.trim(); if (v) A.node.comment = v; else delete A.node.comment; persistVars(); return; }
     if (e.target.id !== "anRvNote" || !A.review) return;
     const rv = reviewData(); const mk = rv.marks[basePly()]; if (!mk) return;
     mk.note = e.target.value; saveLibrary();
@@ -67,6 +71,9 @@ export function initAnalysis(h) {
   });
   $("anMove").addEventListener("click", (e) => {
     const t = e.target.closest("[data-act]"); if (!t) return;
+    if (t.dataset.act === "note-edit") { A.noteEdit = A.node.id; renderMoveCard(); const ta = $("anNote"); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } return; }
+    if (t.dataset.act === "note-done") { A.noteEdit = null; renderMoveCard(); renderMoves(); return; }
+    if (t.dataset.act === "note-del") { delete A.node.comment; persistVars(); A.noteEdit = null; renderMoveCard(); renderMoves(); return; }
     const a = t.dataset.act, p = basePly();
     if (a === "rv-mark") { const rv = reviewData(); rv.marks[p] = rv.marks[p] || { note: "", cand: null, candSan: "" }; saveLibrary(); renderMoveCard(); const n = $("anRvNote"); if (n) n.focus(); return; }
     if (a === "rv-unmark") { const rv = reviewData(); delete rv.marks[p]; saveLibrary(); renderMoveCard(); renderMoves(); return; }
@@ -97,10 +104,21 @@ export function initAnalysis(h) {
     renderBoard(); renderPanel();
   });
   on("analysed", (id) => { if (A.entry && id === A.entry.id) { A.reportKey = ""; renderAll(); } });
+  // Cuando termina el diagnóstico en segundo plano, la devolución puede sumar el contexto que faltaba.
+  on("warm", (p) => { if (p.pending) return; A.reportKey = ""; if (A.entry && !A.review && A.tab === "report" && !$("view-analysis").hidden) renderPanel(); });
+  $("anType").addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Escape") { e.target.value = ""; e.target.blur(); return; }
+    if (e.key !== "Enter") return;
+    const ok = typedMove(e.target.value);
+    e.target.classList.toggle("bad", !ok);
+    if (ok) e.target.value = ""; else toast(tr("Esa jugada no es legal en esta posición.", "That move isn't legal in this position."));
+  });
+  $("anType").addEventListener("input", (e) => e.target.classList.remove("bad"));
   window.__mesaAnalysis = {
     state: () => ({ id: A.entry && A.entry.id, ply: basePly(), node: A.node && A.node.id, inVar: inVar(), depth: A.node ? A.node.ply : 0, fen: A.node && A.node.fen, tab: A.tab, review: A.review, compare: A.compare,
       live: A.live && A.live.lines ? A.live.lines.length : 0, vars: A.entry ? A.entry.vars || null : null, marks: A.entry && A.entry.selfReview ? A.entry.selfReview.marks : null }),
-    move: (o, d) => onBoardMove(o, d), go: (p) => goTo(p), playBest, playLine, tab: setTab, nav, pgn: () => currentPgn(), del: deleteVariation
+    move: (o, d) => onBoardMove(o, d), type: (t) => typedMove(t), go: (p) => goTo(p), playBest, playLine, tab: setTab, nav, pgn: () => currentPgn(), del: deleteVariation
   };
 }
 const engineOnSetting = () => store.settings.liveEngine !== false;
@@ -115,7 +133,7 @@ export function openAnalysis(id, ply, opts = {}) {
   const e = findEntry(id); if (!e) return;
   let game; try { game = gameOf(e); } catch (err) { toast(err.message); return; }
   stopLive();
-  const tree = buildTree(game, e.vars);
+  const tree = buildTree(game, e.vars, e.notes);
   Object.assign(A, { entry: e, game, tree, live: null, report: null, reportKey: "", pendingReply: null, showMe: false });
   $("anEngLines").innerHTML = "";
   A.node = tree.mainline[Math.max(0, Math.min(tree.mainline.length - 1, ply != null ? ply : 0))];
@@ -172,7 +190,17 @@ function persistVars() {
   if (!A.entry || A.entry.free) return;
   const v = serializeVars(A.tree);
   if (v) A.entry.vars = v; else delete A.entry.vars;
+  const nt = serializeNotes(A.tree);
+  if (nt) A.entry.notes = nt; else delete A.entry.notes;
   saveLibrary();
+}
+/* Comentario propio en la jugada actual (se guarda con la partida y sale en el PGN). */
+function noteHtml(n) {
+  if (!n || !n.san) return "";
+  if (A.noteEdit === n.id) return `<div class="note-edit"><textarea id="anNote" rows="3" maxlength="2000" placeholder="${tr("Tu comentario sobre esta jugada", "Your comment on this move")}">${esc(n.comment || "")}</textarea><div class="btn-row"><button class="btn small primary" type="button" data-act="note-done">${tr("Listo", "Done")}</button>${n.comment ? `<button class="linkbtn" type="button" data-act="note-del">${tr("Borrar", "Delete")}</button>` : ""}</div></div>`;
+  return n.comment
+    ? `<div class="note"><div class="line-lbl"><span>${tr("Tu comentario", "Your comment")}</span><button class="linkbtn" type="button" data-act="note-edit">${tr("Editar", "Edit")}</button></div><p class="nofig">${esc(n.comment)}</p></div>`
+    : `<div class="btn-row"><button class="linkbtn" type="button" data-act="note-edit">${tr("Agregar un comentario", "Add a comment")}</button></div>`;
 }
 
 /* ---------- navegación ---------- */
@@ -184,6 +212,8 @@ function goNode(n, sound = true) {
   if (!(A.live && A.live.fen === n.fen)) A.live = null;
   renderBoard(forward && sound && n.san ? soundFor(n) : null);
   renderPanel();
+  // Para lectores de pantalla: la jugada que quedó en el tablero.
+  const live = $("srLive"); if (live) live.textContent = n.san ? `${Math.floor((n.ply + 1) / 2)}${n.color === "w" ? "." : "..."} ${n.san}` : tr("Posición inicial", "Starting position");
   startLive();
 }
 function goTo(p, sound = true) { if (A.tree) goNode(A.tree.mainline[Math.max(0, Math.min(A.tree.mainline.length - 1, p))], sound); }
@@ -207,6 +237,7 @@ function jumpKey(dir) {
 }
 export function analysisKey(e) {
   if (!A.entry) return false;
+  if (e.key === "m" || e.key === "M") { $("anType").focus(); return true; }
   if (e.key === "ArrowLeft") { nav("prev"); return true; }
   if (e.key === "ArrowRight") { if (A.tab === "report" && !A.review) setTab("moves"); nav("next"); return true; }
   if (e.key === "ArrowUp") { jumpKey(-1); return true; }
@@ -244,6 +275,24 @@ function playUci(uci) {
   if (!n) return false;
   if (n.main == null) persistVars();
   goNode(n);
+  return true;
+}
+/** Jugada escrita con el teclado: acepta Cf3 / Nf3, e4, exd5, O-O, e8=D y también e2e4. Devuelve false si no es legal acá. */
+function typedMove(text) {
+  if (!A.tree || !A.node) return false;
+  let t = String(text || "").trim().replace(/[!?+#]+$/, "").replace(/0/g, "O").replace(/\s+/g, "");
+  if (!t) return false;
+  const c = new Chess(A.node.fen);
+  const attempt = (san) => { try { const m = c.move(san, { strict: false }); c.undo(); return m; } catch (e) { return null; } };
+  const ES = { R: "K", D: "Q", T: "R", A: "B", C: "N" };
+  const es = (x) => x.replace(/^[RDTAC]/, (ch) => ES[ch]).replace(/=([RDTAC])$/, (_m, ch) => "=" + ES[ch]);
+  const cap = t.charAt(0).toUpperCase() + t.slice(1);
+  const order = store.settings.notation === "es" ? [es(t), es(cap), t, cap] : [t, cap, es(t), es(cap)];
+  let m = null;
+  if (/^[a-h][1-8][a-h][1-8][qrbnQRBN]?$/.test(t)) { try { m = c.move({ from: t.slice(0, 2), to: t.slice(2, 4), promotion: t[4] ? t[4].toLowerCase() : undefined }); c.undo(); } catch (e) { m = null; } }
+  for (const cand of order) { if (m) break; m = attempt(cand); }
+  if (!m) return false;
+  onBoardMove(m.from, m.to, m.promotion || (m.piece === "p" && /[18]$/.test(m.to) ? "q" : ""));
   return true;
 }
 /** Juega la jugada que recomienda el motor en la posición actual (para el bando que mueve, sea el tuyo o el rival). */
@@ -542,6 +591,7 @@ function renderReport() {
     if (r.context.length) h += `<div class="btn-row"><button class="linkbtn" type="button" data-act="diagnosis">${tr("Ver el informe de la semana y del mes", "See the weekly and monthly report")}</button></div>`;
     if (r.next.length) h += `<h4>${tr("Qué hacer ahora", "What to do next")}</h4><div class="btn-row">${r.next.map((x, i) => `<button class="btn small${i === 0 ? " primary" : ""}" type="button" data-act="${x.act}"${x.arg ? ` data-arg="${esc(x.arg)}"` : ""}>${esc(x.label)}</button>`).join("")}</div>`;
   } else h += `<p class="muted small">${tr("Si jugaste esta partida, indicá con qué color arriba: la devolución pasa a hablarte a vos y la compara con tus otras partidas.", "If you played this game, choose your color above: the report will then speak to you and compare it with your other games.")}</p>`;
+  h += `<div class="btn-row rp-foot"><button class="linkbtn" type="button" data-act="copy-report">${tr("Copiar la devolución como texto", "Copy the report as text")}</button></div>`;
   el.innerHTML = h;
 }
 
@@ -623,12 +673,16 @@ function nodeLabel(n) { return moveLabel(n.parent.fen, n.san, n.color); }
 function renderMoveCard() {
   const el = $("anMove"); const a = an(); const g = A.game;
   if (A.review) { reviewCard(el); return; }
+  // Mientras escribís un comentario no se redibuja la tarjeta (el motor sigue trabajando de fondo).
+  if (A.noteEdit != null && A.node && A.noteEdit !== A.node.id) A.noteEdit = null;
+  if (A.noteEdit != null && document.activeElement && document.activeElement.id === "anNote") return;
   if (inVar()) {
     const n = A.node; const free = A.entry.free;
     el.innerHTML = `<div class="eyebrow">${free ? tr("Tu línea", "Your line") : tr("Estás explorando una variante", "You're exploring a variation")}</div>
       <div class="mh"><span class="san">${esc(nodeLabel(n))}</span></div>
       <p class="small muted">${tr("Seguí moviendo por los dos bandos: con la barra espaciadora se juega lo que recomienda el motor.", "Keep moving for both sides: the space bar plays whatever the engine recommends.")}</p>
       <div class="btn-row">${free ? `<button class="btn small primary" type="button" data-act="save-free">${tr("Guardar como partida", "Save as a game")}</button>` : `<button class="btn small" type="button" data-act="back">${tr("Volver a la partida", "Back to the game")}</button>`}<button class="btn small" type="button" data-act="delvar">${tr("Borrar esta variante", "Delete this variation")}</button></div>`;
+    el.insertAdjacentHTML("beforeend", noteHtml(n));
     $("anVarInfo").textContent = free ? "" : tr("Variante", "Variation");
     return;
   }
@@ -647,8 +701,13 @@ function renderMoveCard() {
   const uc = userColor();
   let h = `<div class="eyebrow nofig">${esc(who)}${uc === m.color ? ` (${tr("vos", "you")})` : ""}</div><div class="mh"><span class="san">${esc(moveLabel(g.fens[k], m.san, m.color))}</span>`;
   if (!x) { el.innerHTML = h + `<span class="muted">${tr("Analizando…", "Analyzing…")}</span></div>`; return; }
-  h += `<span class="glyph g-${x.c}">${CLS[x.c].g}</span><span class="cl c-${x.c}">${CLS[x.c].label}</span></div>`;
+  // Dentro de la teoría de aperturas, una jugada correcta se muestra como "de libro" (los errores siguen siendo errores).
+  const book = bookOf(g), theory = k < book.ply && ["best", "good", "inacc"].includes(x.c);
+  h += theory ? `<span class="cl c-book">${tr("De libro", "Book move")}</span></div>` : `<span class="glyph g-${x.c}">${CLS[x.c].g}</span><span class="cl c-${x.c}">${CLS[x.c].label}</span></div>`;
   h += `<div class="ev">${tr("Evaluación", "Evaluation")} ${evalText(a.evals[k])} → ${evalText(a.evals[k + 1])}</div>`;
+  const op = book.at[Math.min(k + 1, book.at.length - 1)];
+  if (op && k < book.ply) h += `<div class="op-line nofig"><b>${esc(op.eco)}</b> ${esc(op.name)}</div>`;
+  else if (book.ply && k === book.ply) h += `<div class="op-line nofig">${tr("Acá la partida salió de la teoría conocida", "This is where the game left known theory")} (<b>${esc(book.eco)}</b> ${esc(book.name)}).</div>`;
   const ex = explainMove(g, a, k, uc);
   if (ex) {
     if (ex.headline && ex.headline !== CLS[x.c].label) h += `<p><b>${esc(ex.headline)}.</b> ${esc(ex.paragraphs[0] || "")}</p>` + ex.paragraphs.slice(1).map((q) => `<p>${esc(q)}</p>`).join("");
@@ -662,11 +721,11 @@ function renderMoveCard() {
     h += `<div class="btn-row"><button class="btn small" type="button" data-act="ai" data-k="${k}">${cached ? tr("Volver a explicar con IA", "Explain again with AI") : tr("Explicar con IA", "Explain with AI")}</button></div>`;
     h += `<div id="anAiOut">${cached ? `<div class="ai-out">${md(cached)}</div>` : ""}</div>`;
   }
-  el.innerHTML = h;
+  el.innerHTML = h + noteHtml(A.node);
 }
 
 /* ---------- planilla ---------- */
-const mvBtn = (n, lab) => `<button type="button" class="mv${n === A.node ? " cur" : ""}" data-node="${n.id}">${esc(lab)}</button>`;
+const mvBtn = (n, lab) => `<button type="button" class="mv${n === A.node ? " cur" : ""}${n.comment ? " noted" : ""}" data-node="${n.id}"${n.comment ? ` title="${esc(n.comment)}"` : ""}>${esc(lab)}</button>`;
 /** Una línea a partir del nodo `n`: la jugada, sus alternativas entre paréntesis (como en un libro) y la continuación. */
 function seqHtml(n, force, alts) {
   let h = mvBtn(n, n.color === "w" || force ? nodeLabel(n) : n.san);
@@ -692,7 +751,7 @@ function renderMoves() {
     const x = a && a.info[k]; const node = A.tree.mainline[k + 1];
     const rvm = A.review && A.entry.selfReview && A.entry.selfReview.marks && A.entry.selfReview.marks[k];
     const gl = rvm ? `<span class="gl rv-flag" title="${tr("Marcaste este momento", "You marked this moment")}">●</span>` : x && ["inacc", "mistake", "blunder"].includes(x.c) ? `<span class="gl c-${x.c}">${CLS[x.c].g}</span>` : "";
-    return `<td><button type="button" class="mv${cur === node ? " cur" : ""}" data-node="${node.id}">${esc(g.moves[k].san)}${gl}</button></td>`;
+    return `<td><button type="button" class="mv${cur === node ? " cur" : ""}${node.comment ? " noted" : ""}" data-node="${node.id}"${node.comment ? ` title="${esc(node.comment)}"` : ""}>${esc(g.moves[k].san)}${gl}</button></td>`;
   };
   // Variantes que salen de la posición previa a la jugada k (alternativas a esa jugada).
   const varsAt = (k) => (k != null && k < g.moves.length ? A.tree.mainline[k].children.filter((c) => c.main == null) : []);
@@ -738,7 +797,7 @@ function currentPgn(withVars = true) {
   const headers = e.free
     ? { Event: tr("Análisis", "Analysis"), Date: `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`, White: "?", Black: "?", Result: "*", ...g.headers }
     : { ...g.headers, White: g.headers.White || e.white, Black: g.headers.Black || e.black, Result: g.headers.Result || e.result || "*" };
-  return toPgn(headers, A.tree, { vars: withVars });
+  return toPgn(headers, A.tree, { vars: withVars, ...(e.free ? {} : analysisAnnotations(e.analysis)) });
 }
 async function copy(text, okMsg) {
   try { await window.api.copyText(text); toast(okMsg); } catch (err) { toast(tr("No pude copiar al portapapeles.", "Couldn't copy to the clipboard.")); }
@@ -786,7 +845,7 @@ function moreMenu(anchor) {
     free && { label: tr("Guardar como partida", "Save as a game"), run: saveFree },
     "-",
     !free && vars && { label: tr("Borrar todas las variantes", "Delete all variations"), danger: true, run: () => { clearVariations(A.tree); persistVars(); goNode(baseOf(A.node), false); } },
-    !free && { label: tr("Quitar esta partida de la lista", "Remove this game from the list"), danger: true, run: () => { const id = A.entry.id; stopLive(); A.entry = null; A.tree = null; A.game = null; $("anContent").hidden = true; $("anEmpty").hidden = false; removeEntry(id); toast(tr("Partida quitada.", "Game removed.")); hooks.goView("library"); } }
+    !free && { label: tr("Quitar esta partida de la lista", "Remove this game from the list"), danger: true, run: () => { const id = A.entry.id; stopLive(); A.entry = null; A.tree = null; A.game = null; $("anContent").hidden = true; $("anEmpty").hidden = false; removeGame(id); hooks.goView("library"); } }
   ].filter(Boolean));
 }
 void movetext;

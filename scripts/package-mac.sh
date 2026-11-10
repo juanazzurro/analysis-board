@@ -11,7 +11,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-ELECTRON_VERSION="45.2.1"
+ELECTRON_VERSION="45.3.0"
 STOCKFISH_TAG="sf_18"
 BUNDLE_ID="ar.juanazzurro.mesa-de-analisis"
 APP_NAME="Analysis Board"
@@ -50,8 +50,9 @@ cp node_modules/chessground/LICENSE "$RES/chessground-LICENSE.txt"
 # Licencias de las tipografías y de las piezas incluidas
 mkdir -p "$RES/licenses"
 cp THIRD-PARTY.md "$RES/licenses/"
-cp node_modules/@fontsource-variable/source-serif-4/LICENSE "$RES/licenses/SourceSerif4-OFL.txt"
-cp node_modules/@fontsource-variable/ibm-plex-sans/LICENSE "$RES/licenses/IBMPlexSans-OFL.txt"
+cp node_modules/@fontsource-variable/asap/LICENSE "$RES/licenses/Asap-OFL.txt"
+cp node_modules/@fontsource-variable/piazzolla/LICENSE "$RES/licenses/Piazzolla-OFL.txt"
+cp node_modules/@fontsource-variable/chivo-mono/LICENSE "$RES/licenses/ChivoMono-OFL.txt"
 cp node_modules/@fontsource/noto-sans-symbols-2/LICENSE "$RES/licenses/NotoSansSymbols2-OFL.txt"
 cp src/assets/pieces/chessnut/LICENSE.txt "$RES/licenses/Chessnut-Apache-2.0.txt"
 

@@ -1,9 +1,10 @@
 // Analysis Board (antes "Mesa de Análisis") — proceso principal (Electron)
-const { app, BrowserWindow, ipcMain, shell, nativeTheme, Menu, dialog, screen, clipboard } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, nativeTheme, Menu, dialog, screen, clipboard, Notification } = require("electron");
 const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const crypto = require("crypto");
 
 const APP_NAME = "Analysis Board";
 const LEGACY_NAME = "Mesa de Análisis";
@@ -39,14 +40,30 @@ let win = null;
 const engines = new Map(); // id -> { proc, buf }
 
 /* ---------- Registro de diagnóstico ---------- */
-let logFile = null;
+let logFile = null, logChecked = 0;
+const LOG_MAX = 512 * 1024;   // al pasar este tamaño, el registro anterior queda en mesa.log.1 y se empieza uno nuevo
 function log(...a) {
   try {
     if (!logFile) logFile = path.join(app.getPath("userData"), "mesa.log");
-    const line = new Date().toISOString() + " " + a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ") + "\n";
-    fs.appendFileSync(logFile, line);
+    if (++logChecked % 50 === 1) { try { if (fs.statSync(logFile).size > LOG_MAX) fs.renameSync(logFile, logFile + ".1"); } catch (e) {} }
+    const line = new Date().toISOString() + " " + a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ").slice(0, 4000) + "\n";
+    fs.appendFileSync(logFile, line, { mode: 0o600 });
   } catch (e) { /* sin registro */ }
 }
+/* Errores que nadie atajó: quedan en el registro en vez de perderse (o de cerrar la app sin explicación). */
+process.on("uncaughtException", (e) => { log("[error no capturado]", (e && e.stack) || String(e)); });
+process.on("unhandledRejection", (e) => { log("[promesa rechazada]", (e && e.stack) || String(e)); });
+let lastCrashReload = 0;
+app.on("render-process-gone", (_e, wc, d) => {
+  log("[ventana caída]", d && d.reason, d && d.exitCode);
+  if (!d || d.reason === "clean-exit" || d.reason === "killed") return;
+  // Se recarga sola una vez; si vuelve a caerse enseguida, se avisa en vez de entrar en un ciclo.
+  const now = Date.now(), again = now - lastCrashReload < 15000; lastCrashReload = now;
+  if (!win || win.isDestroyed() || wc !== win.webContents) return;
+  if (again) { dialog.showMessageBox(win, { type: "error", message: L("Analysis Board tuvo un problema", "Analysis Board ran into a problem"), detail: L("La ventana dejó de responder dos veces seguidas. Tus partidas están guardadas. Cerrá la app y volvé a abrirla; si se repite, exportá el registro desde Ajustes → Ayuda y mandalo.", "The window stopped working twice in a row. Your games are saved. Quit the app and open it again; if it happens again, export the log from Settings → Help and send it.") }); return; }
+  win.reload();
+});
+app.on("child-process-gone", (_e, d) => { if (d && d.reason !== "clean-exit") log("[proceso caído]", d.type, d.reason, d.exitCode, d.name || ""); });
 
 /* ---------- Stockfish ---------- */
 // No depende de app.isPackaged: en la app de Mac el ejecutable se llama "Electron" y Electron cree que no está empaquetada.
@@ -109,7 +126,7 @@ ipcMain.on("engine:send", (_e, id, cmd) => {
   if (rec) { try { rec.proc.stdin.write(cmd + "\n"); } catch (e) {} }
 });
 ipcMain.handle("engine:stop", (_e, id) => stopEngine(id));
-ipcMain.handle("sys:info", () => ({ cores: os.cpus().length, mem: Math.round(os.totalmem() / 1048576), platform: process.platform, version: app.getVersion(), test: !!process.env.MESA_SHOTS && !process.env.MESA_NEWS }));
+ipcMain.handle("sys:info", () => ({ cores: os.cpus().length, mem: Math.round(os.totalmem() / 1048576), platform: process.platform, version: app.getVersion(), test: !!process.env.MESA_SHOTS && !process.env.MESA_NEWS, menu: (Menu.getApplicationMenu() || { items: [] }).items.length }));
 
 /* ---------- Actualizar desde un .zip (sin pasar por la Terminal) ---------- */
 const OUR_ID = /^ar\.juanazzurro\.mesa/;
@@ -192,7 +209,7 @@ async function checkUpdate() {
   const j = await r.json();
   const latest = String(j.tag_name || "").replace(/^v/i, "");
   const asset = (j.assets || []).find((x) => /mac.*\.zip$/i.test(x.name)) || (j.assets || []).find((x) => /\.zip$/i.test(x.name));
-  latestRelease = { latest, asset: asset ? { url: asset.browser_download_url, size: asset.size, name: asset.name } : null };
+  latestRelease = { latest, asset: asset ? { url: asset.browser_download_url, size: asset.size, name: asset.name, sha256: /^sha256:[0-9a-f]{64}$/i.test(asset.digest || "") ? asset.digest.slice(7).toLowerCase() : null } : null };
   return { current, latest, newer: !!latest && cmpVersion(latest, current) > 0, url: j.html_url || `https://github.com/${REPO}/releases`, notes: String(j.body || "").slice(0, 1500), hasAsset: !!asset, size: asset ? asset.size : 0, canInstall: process.platform === "darwin" };
 }
 ipcMain.handle("update:check", () => checkUpdate());
@@ -216,12 +233,13 @@ ipcMain.handle("update:download", async () => {
     const total = +res.headers.get("content-length") || a.size || 0;
     const out = fs.createWriteStream(file);
     let received = 0, last = 0;
+    const hash = crypto.createHash("sha256");
     try {
       const reader = res.body.getReader();
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        received += value.length;
+        received += value.length; hash.update(value);
         if (!out.write(Buffer.from(value))) await new Promise((r) => out.once("drain", r));
         const now = Date.now(); if (now - last > 200) { last = now; send({ received, total }); }
       }
@@ -231,6 +249,14 @@ ipcMain.handle("update:download", async () => {
       throw new Error(L("Se cortó la descarga de la actualización. Probá de nuevo.", "The update download was interrupted. Try again."));
     }
     if (a.size && received !== a.size) throw new Error(L("La descarga llegó incompleta. Probá de nuevo.", "The download arrived incomplete. Try again."));
+    // GitHub publica la huella (SHA-256) de cada archivo de una versión: lo descargado tiene que coincidir byte por byte.
+    const got = hash.digest("hex");
+    if (a.sha256 && got !== a.sha256) {
+      log("actualización con huella distinta", got, a.sha256);
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+      throw new Error(L("El archivo descargado no coincide con el publicado en GitHub, así que no se instaló. Probá de nuevo más tarde.", "The downloaded file doesn't match the one published on GitHub, so it wasn't installed. Try again later."));
+    }
+    log("actualización descargada", received, a.sha256 ? "huella verificada" : "sin huella publicada");
     send({ received, total, done: true });
     if (process.platform !== "darwin") return { downloaded: file, version: latestRelease.latest };
     return installFromZip(file);
@@ -286,7 +312,12 @@ function dailyBackup() {
       const f = storeFile(key); if (!fs.existsSync(f)) continue;
       try { JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) { continue; } // nunca se respalda un archivo roto
       const mine = fs.readdirSync(dir).filter((n) => n.startsWith(key + "-") && n.endsWith(".json")).sort();
-      if (!mine.includes(`${key}-${day}.json`)) { fs.copyFileSync(f, path.join(dir, `${key}-${day}.json`)); mine.push(`${key}-${day}.json`); }
+      if (!mine.includes(`${key}-${day}.json`)) {
+        const dest = path.join(dir, `${key}-${day}.json`);
+        if (key === "settings") { const v = JSON.parse(fs.readFileSync(f, "utf8")); delete v.aiKey; fs.writeFileSync(dest, JSON.stringify(v), { mode: 0o600 }); }   // la clave de la API no se copia
+        else { fs.copyFileSync(f, dest); try { fs.chmodSync(dest, 0o600); } catch (e) {} }
+        mine.push(`${key}-${day}.json`);
+      }
       for (const old of mine.slice(0, Math.max(0, mine.length - 3))) fs.rmSync(path.join(dir, old), { force: true });
     }
   } catch (e) { log("respaldo diario", e.message); }
@@ -309,16 +340,42 @@ ipcMain.handle("store:set", (_e, key, value) => {
   const f = storeFile(key);
   fs.mkdirSync(path.dirname(f), { recursive: true });
   const tmp = f + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(value));
+  // Solo tu usuario de la Mac puede leer estos archivos (ahí están tus partidas y, si la cargaste, la clave de la API).
+  fs.writeFileSync(tmp, JSON.stringify(value), { mode: 0o600 });
   fs.renameSync(tmp, f);
   return true;
 });
 ipcMain.handle("store:path", () => app.getPath("userData"));
+/** Texto para pedir ayuda: versión, sistema y las últimas líneas del registro. No incluye partidas, usuarios ni claves. */
+ipcMain.handle("support:report", (_e, extra) => {
+  const tail = (f, n) => { try { return fs.readFileSync(f, "utf8").split("\n").slice(-n).join("\n"); } catch (e) { return ""; } };
+  if (!logFile) logFile = path.join(app.getPath("userData"), "mesa.log");
+  let lines = tail(logFile, 300); if (lines.split("\n").length < 80) lines = tail(logFile + ".1", 200) + "\n" + lines;
+  const size = (k) => { try { return Math.round(fs.statSync(storeFile(k)).size / 1024) + " KB"; } catch (e) { return "-"; } };
+  const head = [
+    `Analysis Board ${app.getVersion()}`,
+    `Electron ${process.versions.electron} · Chromium ${process.versions.chrome}`,
+    `${process.platform} ${os.release()} · ${process.arch} · ${os.cpus().length} cores · ${Math.round(os.totalmem() / 1073741824)} GB`,
+    `Language: ${lang} · Data: library ${size("library")}, training ${size("training")}, progress ${size("progress")}`,
+    extra ? String(extra).slice(0, 2000) : "",
+  ].filter(Boolean).join("\n");
+  // Por las dudas: nada que parezca una clave o una carpeta personal sale del equipo.
+  const scrub = (t) => t.replace(/sk-ant-[A-Za-z0-9_-]+/g, "sk-ant-…").replace(new RegExp(os.homedir().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "~");
+  return scrub(head + "\n\n--- log ---\n" + lines.trim() + "\n");
+});
 ipcMain.on("log", (_e, ...a) => log("[ui]", ...a));
+/* Aviso del sistema cuando termina un trabajo largo y la ventana no está al frente. */
+ipcMain.on("notify", (_e, title, body) => {
+  try {
+    if (process.env.MESA_SHOTS) { log("[aviso]", title, body); return; }
+    if (Notification.isSupported()) { const n = new Notification({ title: String(title || APP_NAME), body: String(body || ""), silent: true }); n.on("click", () => { if (win && !win.isDestroyed()) { win.show(); win.focus(); } }); n.show(); }
+    if (process.platform === "darwin" && app.dock) app.dock.bounce("informational");
+  } catch (e) { log("aviso", e.message); }
+});
 
 /* ---------- Portapapeles y archivos ---------- */
 ipcMain.handle("clip:write", (_e, text) => { clipboard.writeText(String(text || "")); return true; });
-const FILTERS = { pgn: () => [{ name: "PGN", extensions: ["pgn", "txt"] }], json: () => [{ name: L("Copia de seguridad", "Backup"), extensions: ["json"] }] };
+const FILTERS = { pgn: () => [{ name: "PGN", extensions: ["pgn", "txt"] }], json: () => [{ name: L("Copia de seguridad", "Backup"), extensions: ["json"] }], txt: () => [{ name: L("Texto", "Text"), extensions: ["txt"] }] };
 ipcMain.handle("file:save", async (_e, { name, text, kind }) => {
   let file = process.env.MESA_DIALOG_SAVE || null;
   if (!file) {
@@ -433,10 +490,12 @@ ipcMain.handle("puzzles:download", async () => {
 });
 
 /* ---------- Importar partidas ---------- */
-const UA = "AnalysisBoard/2.0 (chess analysis app; github.com/juanazzurro/analysis-board)";
+const UA = "AnalysisBoard/" + app.getVersion() + " (chess analysis app; github.com/juanazzurro/analysis-board)";
 
-async function importLichess(user, max) {
-  const url = `https://lichess.org/api/games/user/${encodeURIComponent(user)}?max=${max}&pgnInJson=true&clocks=true&evals=false&opening=true&moves=true`;
+const LICHESS = process.env.MESA_LICHESS_URL || "https://lichess.org", CHESSCOM = process.env.MESA_CHESSCOM_URL || "https://api.chess.com";
+/** `since`: solo partidas posteriores a ese momento (para traer las nuevas al abrir la app). */
+async function importLichess(user, max, since) {
+  const url = `${LICHESS}/api/games/user/${encodeURIComponent(user)}?max=${max}${since ? "&since=" + (since + 1) : ""}&pgnInJson=true&clocks=true&evals=false&opening=true&moves=true`;
   const r = await fetch(url, { headers: { Accept: "application/x-ndjson", "User-Agent": UA } });
   if (r.status === 404) throw new Error(L(`No existe el usuario "${user}" en Lichess.`, `The user "${user}" doesn't exist on Lichess.`));
   if (r.status === 429) throw new Error(L("Lichess pidió esperar un minuto antes de volver a importar.", "Lichess asked to wait a minute before importing again."));
@@ -459,19 +518,21 @@ async function importLichess(user, max) {
   return out;
 }
 
-async function importChesscom(user, max) {
+async function importChesscom(user, max, since) {
   const u = encodeURIComponent(String(user).toLowerCase());
-  const r = await fetch(`https://api.chess.com/pub/player/${u}/games/archives`, { headers: { "User-Agent": UA } });
+  const r = await fetch(`${CHESSCOM}/pub/player/${u}/games/archives`, { headers: { "User-Agent": UA } });
   if (r.status === 404) throw new Error(L(`No existe el usuario "${user}" en Chess.com.`, `The user "${user}" doesn't exist on Chess.com.`));
   if (!r.ok) throw new Error(L(`Chess.com respondió con un error (${r.status}).`, `Chess.com returned an error (${r.status}).`));
   const { archives = [] } = await r.json();
   const out = [];
-  for (let i = archives.length - 1; i >= 0 && out.length < max; i--) {
-    const m = await fetch(archives[i], { headers: { "User-Agent": UA } });
+  let reachedOld = false;
+  for (let i = archives.length - 1; i >= 0 && out.length < max && !reachedOld; i--) {
+    const m = await fetch(process.env.MESA_CHESSCOM_URL ? archives[i].replace("https://api.chess.com", CHESSCOM) : archives[i], { headers: { "User-Agent": UA } });
     if (!m.ok) continue;
     const { games = [] } = await m.json();
     for (let j = games.length - 1; j >= 0 && out.length < max; j--) {
       const g = games[j];
+      if (since && (g.end_time || 0) * 1000 <= since) { reachedOld = true; break; }
       if (!g.pgn || (g.rules && g.rules !== "chess")) continue;
       const res = g.white?.result === "win" ? "1-0" : g.black?.result === "win" ? "0-1" : "½-½";
       const idm = /\/(\d+)(?:\?|$)/.exec(g.url || "");
@@ -486,10 +547,11 @@ async function importChesscom(user, max) {
   return out;
 }
 
-ipcMain.handle("import:games", async (_e, source, user, max) => {
-  const n = Math.max(1, Math.min(200, Number(max) || 20));
+ipcMain.handle("import:games", async (_e, source, user, max, since) => {
+  const n = Math.max(1, Math.min(1000, Number(max) || 20));
+  const from = Number(since) > 0 ? Number(since) : 0;
   if (!user || !String(user).trim()) throw new Error(L("Escribí tu nombre de usuario.", "Enter your username."));
-  return source === "lichess" ? importLichess(String(user).trim(), n) : importChesscom(String(user).trim(), n);
+  return source === "lichess" ? importLichess(String(user).trim(), n, from) : importChesscom(String(user).trim(), n, from);
 });
 
 /* ---------- IA opcional (API de Anthropic, con la clave del usuario) ---------- */
