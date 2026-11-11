@@ -40,7 +40,7 @@ note "2. abrir un .pgn"
 UD="$(profile open)"
 printf '[Event "Prueba Finder"]\n[White "Blancas Finder"]\n[Black "Negras Finder"]\n[Result "1-0"]\n\n1. e4 e5 2. Qh5 Ke7 3. Qxe5# 1-0\n' > "$WORK/finder.pgn"
 cat > "$WORK/open.json" <<JSON
-[{"wait":3000,"js":"window.__errs=[]; ['EXPECT openfile', /Blancas Finder/.test((document.querySelector('#anTitle b')||{}).textContent||'') && document.querySelector('.nav-btn.on').dataset.view==='analysis', (document.querySelector('#anTitle b')||{}).textContent, document.querySelector('.nav-btn.on').dataset.view]","shot":"$OUT/mac-openfile.png"},
+[{"wait":500,"js":"window.__errs=[]; (async()=>{$W let t=''; for(let i=0;i<40;i++){ t=(document.querySelector('#anTitle b')||{}).textContent||''; if(/Blancas Finder/.test(t)) break; await w(500); } return ['EXPECT openfile', /Blancas Finder/.test(t) && document.querySelector('.nav-btn.on').dataset.view==='analysis', t, document.querySelector('.nav-btn.on').dataset.view]})()","shot":"$OUT/mac-openfile.png"},
  {"js":"['ERRS', window.__errs]"},{"js":"['DONE']"}]
 JSON
 open -W -n -a "$APP" --env MESA_SHOTS="$WORK/open.json" --env MESA_USERDATA="$UD" --env MESA_LANG=es --stdout "$OUT/2-open.txt" --stderr "$OUT/2-open.err" "$WORK/finder.pgn"
