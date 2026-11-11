@@ -28,7 +28,7 @@ cat > "$WORK/boot.json" <<JSON
 [{"wait":1500,"js":"window.__errs=[]; addEventListener('error',e=>__errs.push(e.message)); addEventListener('unhandledrejection',e=>__errs.push(String(e.reason&&e.reason.stack||e.reason))); (async()=>{const s=await window.api.sysInfo(); return ['EXPECT platform', s.platform==='darwin' && s.version==='$VERSION' && s.menu>=5, s.platform, s.version, s.menu, s.cores]})()"},
  {"wait":300,"js":"['EXPECT fonts', getComputedStyle(document.body).fontFamily.includes('Asap') && [...document.fonts].some(f=>f.status==='loaded'&&/Piazzolla/.test(f.family)), document.querySelector('.td-head h1').textContent]","shot":"$OUT/mac-today.png"},
  {"wait":300,"js":"(async()=>{$W document.querySelector('[data-view=\"library\"]').click(); await w(500); document.querySelector('.lib-row[data-id=\"chesscom-83et6o\"]').click(); await w(2500); const A=__mesaAnalysis; const s=document.querySelector('[data-act=\"rv-skip\"]'); if(s){s.click(); await w(500);} A.tab('moves'); A.go(24); let n=0; for(let i=0;i<40&&!n;i++){await w(500); n=A.state().live;} const d=document.getElementById('anEngMeta').textContent; A.playBest(); await w(1500); const st=A.state(); return ['EXPECT engine', n>=1 && st.depth===25, n, d, st.depth, st.inVar]})()","shot":"$OUT/mac-analysis.png"},
- {"wait":300,"js":"(async()=>{try{const u=await window.api.checkUpdate(); return ['EXPECT github', typeof u.current==='string' && u.current==='$VERSION' && typeof u.newer==='boolean', u.latest, u.newer]}catch(e){const m=String(e.message); /* los servidores de GitHub Actions comparten IP y a veces agotan el cupo sin clave: no es una falla de la app */ return ['EXPECT github', /\(403\)|\(429\)/.test(m), 'sin cupo: '+m.slice(-60)]}})()"},
+ {"wait":300,"js":"(async()=>{try{const u=await window.api.checkUpdate(); return ['EXPECT github', typeof u.current==='string' && u.current==='$VERSION' && typeof u.newer==='boolean', u.latest, u.newer]}catch(e){const m=String(e.message); /* los servidores de GitHub Actions comparten IP y a veces agotan el cupo sin clave: no es una falla de la app */ return ['EXPECT github', (m.includes('(403)')||m.includes('(429)')), 'sin cupo: '+m.slice(-60)]}})()"},
  {"wait":300,"js":"(async()=>{$W document.querySelector('[data-view=\"diagnosis\"]').click(); await w(1500); return ['EXPECT diagnosis', /14/.test(document.querySelector('.dg-head .sub').textContent), document.querySelector('.dg-head .sub').textContent]})()","shot":"$OUT/mac-diagnosis.png"},
  {"js":"['ERRS', window.__errs]"},{"js":"['DONE']"}]
 JSON
@@ -88,6 +88,7 @@ echo "[js] [\"EXPECT replaced and reopened\", $ok, \"$V\"]" >> "$OUT/4-good.txt"
 ls "$APPS"; screencapture -x "$OUT/mac-after-update.png" 2>/dev/null || true
 quit_app; pkill -f "http.server 8377" 2>/dev/null
 echo "[js] [\"DONE\"]" >> "$OUT/4-good.txt"
+tail -2 "$OUT/4-good.txt"; grep -i "firma\|instalando\|actualiz" "$OUT/4-mesa.log" | cut -c1-200 || true
 
 python3 test/ui/check.py "$OUT/1-boot.txt" "$OUT/2-open.txt" "$OUT/3-bad.txt" "$OUT/4-good.txt" || fail=1
 [ "$fail" = 0 ] && echo "MAC OK" || { echo "MAC FALLÓ"; exit 1; }

@@ -607,7 +607,9 @@ if (process.env.MESA_THEME) app.whenReady().then(() => { nativeTheme.themeSource
 
 /* Capturas automáticas para pruebas (solo si se define MESA_SHOTS). */
 async function runShots() {
-  const steps = JSON.parse(fs.readFileSync(process.env.MESA_SHOTS, "utf8"));
+  // Si la lista de pasos no se puede leer, la app igual se cierra (si no, una prueba mal escrita la deja abierta para siempre).
+  let steps = [];
+  try { steps = JSON.parse(fs.readFileSync(process.env.MESA_SHOTS, "utf8")); } catch (e) { console.log("[js error]", "pasos ilegibles: " + e.message); }
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   for (const st of steps) {
     if (st.js) { try { const r = await win.webContents.executeJavaScript(st.js); if (r !== undefined) console.log("[js]", JSON.stringify(r).slice(0, 400)); } catch (e) { console.log("[js error]", e.message); } }
