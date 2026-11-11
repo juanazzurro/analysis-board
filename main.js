@@ -612,6 +612,7 @@ async function runShots() {
   try { steps = JSON.parse(fs.readFileSync(process.env.MESA_SHOTS, "utf8")); } catch (e) { console.log("[js error]", "pasos ilegibles: " + e.message); }
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   for (const st of steps) {
+    if (!win || win.isDestroyed()) return;      // la app ya se está cerrando (por ejemplo, para instalar una actualización)
     if (st.js) { try { const r = await win.webContents.executeJavaScript(st.js); if (r !== undefined) console.log("[js]", JSON.stringify(r).slice(0, 400)); } catch (e) { console.log("[js error]", e.message); } }
     if (st.wait) await wait(st.wait);
     if (st.shot) { const img = await win.webContents.capturePage(); fs.writeFileSync(st.shot, img.toPNG()); console.log("[shot]", st.shot); }
